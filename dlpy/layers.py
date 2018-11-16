@@ -20,7 +20,7 @@
 
 import pandas as pd
 import six
-from dlpy.utils import multiply_elements, DLPyError, camelcase_to_underscore, underscore_to_camelcase
+from dlpy.utils import multiply_elements, DLPyError, camelcase_to_underscore, underscore_to_camelcase, parameter_2d
 from . import __dev__
 import warnings
 
@@ -298,7 +298,29 @@ class InputLayer(Layer):
         return 0
 
 
-class Conv2d(Layer):
+class _ConvNd(Layer):
+    def __init__(self, n_filters, width, height, stride, name, stride_horizontal,stride_vertical, padding,
+                 padding_width, padding_height, act, fcmp_act, init, std, mean, truncation_factor, init_bias,
+                 dropout, include_bias, src_layers, **kwargs):
+
+        parameters = locals()
+        parameters = _unpack_config(parameters)
+        Layer.__init__(self, name, parameters, src_layers)
+        self._output_size = None
+        self._num_weights = None
+        self.color_code = get_color(self.type)
+
+    @property
+    def num_bias(self):
+        if 'include_bias' in self.config:
+            if not self.config['include_bias']:
+                return 0
+            else:
+                return int(self.config['n_filters'])
+        return int(self.config['n_filters'])
+
+
+class Conv2d(_ConvNd):
     '''
     Convolution layer
 
@@ -367,10 +389,8 @@ class Conv2d(Layer):
                  stride_vertical=None, padding=None, padding_width=None, padding_height=None, act='relu',
                  fcmp_act=None, init=None, std=None, mean=None, truncation_factor=None, init_bias=None,
                  dropout=None, include_bias=True, src_layers=None, **kwargs):
-
         if not __dev__ and len(kwargs) > 0:
             raise DLPyError('**kwargs can be used only in development mode.')
-
         parameters = locals()
         if width is None and height is None:
             parameters['width'] = 3
@@ -380,12 +400,10 @@ class Conv2d(Layer):
         elif height is None:
             parameters['height'] = width
         parameters = _unpack_config(parameters)
-        # _clean_parameters(parameters)
 
-        Layer.__init__(self, name, parameters, src_layers)
-        self._output_size = None
-        self._num_weights = None
-        self.color_code = get_color(self.type)
+        _ConvNd.__init__(self, name=name, src_layers=src_layers, **parameters)
+
+        self.stride = parameter_2d(stride, stride_vertical, stride_horizontal, (1, 1))
 
     @property
     def output_size(self):
@@ -393,46 +411,37 @@ class Conv2d(Layer):
             # calculate output according to specified padding
             if self.config['padding'] is not None:
                 out_w = (self.src_layers[0].output_size[0] - 
-                         self.config['width'] + 2*self.config['padding']) // self.config['stride'] + 1
+                         self.config['width'] + 2*self.config['padding']) // self.stride[1] + 1
                 out_h = (self.src_layers[0].output_size[1] - 
-                         self.config['height'] + 2*self.config['padding']) // self.config['stride'] + 1
+                         self.config['height'] + 2*self.config['padding']) // self.stride[0] + 1
             else:
                 import math
                 # same padding
-                out_w = math.ceil(self.src_layers[0].output_size[0] / self.config['stride'])
-                out_h = math.ceil(self.src_layers[0].output_size[1] / self.config['stride'])
+                out_w = math.ceil(self.src_layers[0].output_size[0] / self.stride[1])
+                out_h = math.ceil(self.src_layers[0].output_size[1] / self.stride[0])
 
                 # if either padding_height or padding_width are specified
                 if self.config['padding_width'] is not None:
                     out_w = (self.src_layers[0].output_size[0] - 
                              self.config['width'] + 
-                             2*self.config['padding_width']) // self.config['stride'] + 1
+                             2*self.config['padding_width']) // self.stride[1] + 1
                 if self.config['padding_height'] is not None:
                     out_h = (self.src_layers[0].output_size[1] - 
                              self.config['height'] + 
-                             2*self.config['padding_height']) // self.config['stride'] + 1
-            self._output_size = (int(out_w), int(out_h), int(self.config['n_filters']))
+                             2*self.config['padding_height']) // self.stride[0] + 1
+            self._output_size = (int(out_h), int(out_w), int(self.config['n_filters']))
         return self._output_size
 
     @property
     def num_weights(self):
         if self._num_weights is None:
-            self._num_weights = int(self.config['width'] * self.config['height'] *
+            self._num_weights = int(self.config['height'] * self.config['width'] *
                                     self.config['n_filters'] * self.src_layers[0].output_size[2])
         return self._num_weights
 
     @property
     def kernel_size(self):
-        return (int(self.config['width']), int(self.config['height']))
-
-    @property
-    def num_bias(self):
-        if 'include_bias' in self.config:
-            if not self.config['include_bias']:
-                return 0
-            else:
-                return int(self.config['n_filters'])
-        return int(self.config['n_filters'])
+        return (int(self.config['height']), int(self.config['width']))
 
 
 class Pooling(Layer):
