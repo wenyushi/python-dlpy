@@ -22,7 +22,6 @@ import json
 import os
 import platform
 import random
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import re
@@ -32,7 +31,6 @@ import string
 import xml.etree.ElementTree as ET
 from swat.cas.table import CASTable
 from PIL import Image
-import warnings
 
 
 def random_name(name='ImageData', length=6):
@@ -183,35 +181,6 @@ def predicted_prob_barplot(ax, labels, values):
     ax.set_xticklabels(['0%', '25%', '50%', '75%', '100%'])
     ax.set_title('Predicted Probability')
     return ax
-
-
-def plot_predict_res(image, label, labels, values):
-    '''
-    Generate a side by side plot of the predicted result
-
-    Parameters
-    ----------
-    image :
-        Specifies the orginal image to be classified.
-    label : string
-        Specifies the class name of the image.
-    labels : list-of-strings
-        Predicted class labels
-    values : list-of-numeric
-        Predicted probabilities
-
-    Returns
-    -------
-    :class:`matplotlib.axes.Axes`
-
-    '''
-    fig = plt.figure(figsize=(12, 5))
-    ax1 = fig.add_subplot(1, 2, 1)
-    ax1.set_title('{}'.format(label))
-    ax1.imshow(image)
-    ax1.axis('off')
-    ax2 = fig.add_subplot(1, 2, 2)
-    predicted_prob_barplot(ax2, labels, values)
 
 
 def camelcase_to_underscore(strings):
@@ -1331,103 +1300,6 @@ def create_object_detection_table(conn, data_path, coord_type, output,
 
     print("NOTE: Object detection table is successfully created.")
     return var_order[2:]
-
-
-def display_object_detections(conn, table, coord_type, max_objects=10,
-                              num_plot=10, n_col=2, fig_size=None):
-    '''
-    Plot images with drawn bounding boxes.
-
-    conn : CAS
-        CAS connection object
-    table : string or CASTable
-        Specifies the object detection castable to be plotted.
-    coord_type : string
-        Specifies coordinate type of input table
-    max_objects : int, optional
-        Specifies the maximum number of bounding boxes to be plotted on an image.
-        Default: 10
-    num_plot : int, optional
-        Specifies the name of the castable.
-    n_col : int, optional
-        Specifies the number of column to plot.
-        Default: 2
-    fig_size : int, optional
-        Specifies the size of figure.
-
-    '''
-    conn.retrieve('loadactionset', _messagelevel = 'error', actionset = 'image')
-
-    input_tbl_opts = input_table_check(table)
-    input_table = conn.CASTable(**input_tbl_opts)
-    img_num = input_table.shape[0]
-    num_plot = num_plot if num_plot < img_num else img_num
-    input_table = input_table.sample(num_plot)
-    det_label_image_table = random_name('detLabelImageTable')
-
-    num_max_obj = input_table['_nObjects_'].max()
-    max_objects = max_objects if num_max_obj > max_objects else num_max_obj
-
-    with sw.option_context(print_messages=False):
-        res = conn.image.extractdetectedobjects(casout = {'name': det_label_image_table, 'replace': True},
-                                                coordtype=coord_type,
-                                                maxobjects=max_objects,
-                                                table=input_table)
-        if res.severity > 0:
-            for msg in res.messages:
-                print(msg)
-
-    outtable = conn.CASTable( det_label_image_table)
-    num_detection = len(outtable)
-    # print('{} out of {} images have bounding boxes to display'.format(num_detection, img_num))
-    if num_detection == 0:
-        print('Since there is no image that contains a bounding box, cannot display any image.')
-        return
-    num_plot = num_plot if num_plot < num_detection else num_detection
-    # if random_plot:
-    #     conn.shuffle(det_label_image_table, casout = {'name': det_label_image_table, 'replace': True})
-
-    with sw.option_context(print_messages=False):
-        prediction_plot = conn.image.fetchImages(imageTable = {'name': det_label_image_table},
-                                                 to = num_plot,
-                                                 fetchImagesVars = ['_image_', '_path_'])
-        if res.severity > 0:
-            for msg in res.messages:
-                print(msg)
-
-    if num_plot > n_col:
-        n_row = num_plot // n_col + 1
-    else:
-        n_row = 1
-        n_col = num_plot
-
-    n_col_m = n_col
-    if n_col_m < 1:
-        n_col_m += 1
-
-    n_row_m = n_row
-    if n_row < 1:
-        n_row_m += 1
-
-    if fig_size is None:
-        fig_size = (16, 16 // n_col_m * n_row_m)
-
-    fig = plt.figure(figsize = fig_size)
-
-    k = 1
-
-    for i in range(num_plot):
-        image = prediction_plot['Images']['Image'][i]
-        ax = fig.add_subplot(n_row, n_col, k)
-        plt.imshow(image)
-        if '_path_' in prediction_plot['Images'].columns:
-            plt.title(str(os.path.basename(prediction_plot['Images']['_path_'].loc[i])))
-        k = k + 1
-        plt.xticks([]), plt.yticks([])
-    plt.show()
-
-    with sw.option_context(print_messages=False):
-        conn.table.droptable(det_label_image_table)
 
 
 def get_mapping_dict():
