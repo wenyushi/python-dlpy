@@ -23,7 +23,6 @@
 #       the CASPROTOCOL environment variable.
 #
 
-import os
 import swat
 import swat.utils.testing as tm
 from dlpy.sequential import Sequential
