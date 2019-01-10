@@ -25,7 +25,7 @@
 
 import swat
 import swat.utils.testing as tm
-from dlpy.network import Network
+from dlpy.model import Model
 from dlpy.layers import *
 from dlpy.utils import DLPyError
 
@@ -41,7 +41,7 @@ class TestNetwork(tm.TestCase):
         swat.options.cas.print_messages = False
         swat.options.interactive_mode = False
 
-        cls.s = swat.CAS('dlgrd009', 13314)
+        cls.s = swat.CAS()
         cls.server_type = tm.get_cas_host_type(cls.s)
 
     def test_option_type(self):
@@ -50,13 +50,16 @@ class TestNetwork(tm.TestCase):
         conv2 = Conv2d(2)(input1)
         concat1 = Concat(src_layers = [conv1, conv2])
         output1 = OutputLayer(n=2)(concat1)
-        model1 = Network(conn = self.s, inputs = [input1], outputs = output1)
+        model1 = Model(conn = self.s, inputs = [input1], outputs = output1)
         model1.compile()
         model1.print_summary()
+        self.assertTrue(model1.count_params() == 6314)
 
-        model2 = Network(conn = self.s, inputs = input1, outputs = output1)
+        model2 = Model(conn = self.s, inputs = input1, outputs = output1)
         model2.compile()
         model2.print_summary()
+        model2.plot_network()
+        self.assertTrue(model2.count_params() == 6314)
 
     def test_concat(self):
         input1 = InputLayer(n_channels = 1, width = 28, height = 28)
@@ -67,57 +70,40 @@ class TestNetwork(tm.TestCase):
         output2 = OutputLayer(n=2)(conv3)
         concat1 = Concat(src_layers = [conv1, conv2, conv3])
         output1 = OutputLayer(n=2)(concat1)
-        model1 = Network(conn = self.s, inputs = [input1, input2], outputs = [output1, output2])
+        model1 = Model(conn = self.s, inputs = [input1, input2], outputs = [output1, output2])
         model1.compile()
         model1.print_summary()
+        self.assertTrue(model1.count_params() == 12644)
 
     def test_inputs(self):
-        try:
-            conv1 = Conv2d(2)
-            output1 = OutputLayer(2)(conv1)
-            model1 = Network(conn = self.s, inputs = [conv1], outputs = [output1])
-            model1.compile()
-        except DLPyError:
-            pass
-        except Exception as e:
-            self.fail('Unexpected exception raised:', e)
-        else:
-            self.fail('ExpectedException not raised')
+        conv1 = Conv2d(2)
+        output1 = OutputLayer(2)(conv1)
+        with self.assertRaises(DLPyError):
+            Model(conn = self.s, inputs = [conv1], outputs = [output1])
 
     def test_outputs(self):
-        try:
+        with self.assertRaises(DLPyError):
             input1 = InputLayer(n_channels = 1, width = 28, height = 28)
             conv1 = Conv2d(2)(input1)
-            model1 = Network(conn = self.s, inputs = [input1], outputs = [conv1])
+            model1 = Model(conn = self.s, inputs = [input1], outputs = [conv1])
             model1.compile()
-        except DLPyError:
-            pass
-        except Exception as e:
-            self.fail('Unexpected exception raised:', e)
-        else:
-            self.fail('ExpectedException not raised')
 
-        try:
+        with self.assertRaises(DLPyError):
             input1 = InputLayer(n_channels = 1, width = 28, height = 28)
             conv1 = Conv2d(2)(input1)
             conv2 = BN()(input1)
             output1 = OutputLayer(2)(conv1)
-            model1 = Network(conn = self.s, inputs = [input1], outputs = [conv2, output1])
+            model1 = Model(conn = self.s, inputs = [input1], outputs = [conv2, output1])
             model1.compile()
-        except DLPyError:
-            pass
-        except Exception as e:
-            self.fail('Unexpected exception raised:', e)
-        else:
-            self.fail('ExpectedException not raised')
 
     def test_without_variable(self):
         input1 = InputLayer(n_channels = 1, width = 28, height = 28)
         conv1 = Conv2d(2)(Conv2d(2)(input1))
         output1 = OutputLayer(n=2)(conv1)
-        model1 = Network(conn = self.s, inputs = [input1], outputs = [output1])
+        model1 = Model(conn = self.s, inputs = [input1], outputs = [output1])
         model1.compile()
         model1.print_summary()
+        self.assertTrue(model1.count_params() == 3196)
 
     def test_multiple_inputs_outputs(self):
         input1 = InputLayer(n_channels = 1, width = 28, height = 28)
@@ -128,9 +114,10 @@ class TestNetwork(tm.TestCase):
         output2 = OutputLayer(n=2)(conv3)
         concat1 = Concat(src_layers = [conv1, conv2, conv3])
         output1 = OutputLayer(n=2)(concat1)
-        model1 = Network(conn = self.s, inputs = [input1, input2], outputs = [output1, output2])
+        model1 = Model(conn = self.s, inputs = [input1, input2], outputs = [output1, output2])
         model1.compile()
         model1.print_summary()
+        self.assertTrue(model1.count_params() == 12682)
 
     def test_unet(self):
         inputs = InputLayer(3, 512, 512, scale = 1.0 / 255)
@@ -166,7 +153,7 @@ class TestNetwork(tm.TestCase):
         conv8 = Conv2d(2, 3, act = 'relu')(conv7)
 
         seg1 = Segmentation()(conv8)
-        model = Network(self.s, inputs = inputs, outputs = seg1)
+        model = Model(self.s, inputs = inputs, outputs = seg1)
         model.compile()
         model.print_summary()
 
@@ -175,7 +162,7 @@ class TestNetwork(tm.TestCase):
         tconv1 = Transconvo(32, height = 5, width = 3, stride = 2, padding_height = 2,
                             padding_width = 1, output_size = (256, 128, 32), name = 'trans1')(inputs)
         seg1 = Segmentation(name = 'seg1')(tconv1)
-        model = Network(self.s, inputs = inputs, outputs = seg1)
+        model = Model(self.s, inputs = inputs, outputs = seg1)
         model.compile()
         model.print_summary()
 
@@ -185,11 +172,11 @@ class TestNetwork(tm.TestCase):
         conv2 = Conv2d(8, 3, act = 'relu')(inputs)
         merge3 = Concat(src_layers = [conv1, conv2])
         conv3 = Conv2d(3, 3, act = 'relu')(merge3)
-        seg1 = Segmentation(name = 'seg1')(conv3)
-        model = Network(self.s, inputs = inputs, outputs = seg1)
+        output1 = OutputLayer(name = 'output1')(conv3)
+        model = Model(self.s, inputs = inputs, outputs = output1)
         model.compile()
         self.assertTrue(inputs.name == 'input1')
-        self.assertTrue(seg1.name == 'seg1')
+        self.assertTrue(output1.name == 'output1')
         model.print_summary()
 
     def test_super_resolution(self):
@@ -216,7 +203,7 @@ class TestNetwork(tm.TestCase):
         x = deconv_block(x, 64, 3, (128, 128, 64))
         x = Conv2d(3, 9, 9, act = 'tanh')(x)
         seg = Segmentation(name = 'Segmentation_1', act = 'auto')(x)
-        model = Network(self.s, inputs = inp, outputs = seg)
+        model = Model(self.s, inputs = inp, outputs = seg)
         model.compile()
 
     def test_multi_src_layer_fc(self):
@@ -225,25 +212,65 @@ class TestNetwork(tm.TestCase):
         fc2 = Dense(n = 64)(fc1)
         fc3 = Dense(n = 64)([fc1, fc2])
         output1 = OutputLayer(n = 10, name = 'OutputLayer_1')(fc3)
-        model = Network(self.s, inputs = inputs, outputs = output1)
+        model = Model(self.s, inputs = inputs, outputs = output1)
         model.compile()
+        self.assertTrue(model.count_params() == 117386)
+
+    def test_single_src_layer_list_fc(self):
+        inputs = InputLayer(1, 28, 28, scale = 1.0 / 255, name = 'InputLayer_1')
+        fc1 = Dense(n = 128)(inputs)
+        fc3 = Dense(n = 64)([fc1])
+        output1 = OutputLayer(n = 10, name = 'OutputLayer_1')(fc3)
+        model = Model(self.s, inputs = inputs, outputs = output1)
+        model.compile()
+        self.assertTrue(model.count_params() == 109194)
 
     def test_non_list_src_layers(self):
         inputs = InputLayer(1, 28, 28, scale = 1.0 / 255, name = 'InputLayer_1')
         fc1 = Dense(n = 128, src_layers = inputs)(inputs)
         fc2 = Dense(n = 64)(fc1)
         output1 = OutputLayer(n = 10, name = 'OutputLayer_1', src_layers = [fc1, fc2])
-        model = Network(self.s, inputs = inputs, outputs = output1)
+        model = Model(self.s, inputs = inputs, outputs = output1)
         model.compile()
+        self.assertTrue(model.count_params() == 109834)
 
-    def test_dulplicated_src_layers_call(self):
+    def test_duplicated_src_layers_call(self):
         inputs = InputLayer(1, 28, 28, scale = 1.0 / 255, name = 'InputLayer_1')
         fc1 = Dense(n = 128, src_layers = inputs)(inputs)
         fc2 = Dense(n = 64)(fc1)
         output1 = OutputLayer(n = 10, name = 'OutputLayer_1', src_layers = fc1)
-        model = Network(self.s, inputs = inputs, outputs = output1)
+        model = Model(self.s, inputs = inputs, outputs = output1)
         model.compile()
         self.assertTrue(len(fc1.src_layers) == 1)
+
+    def test_raise_conv_multi_src(self):
+        with self.assertRaises(DLPyError):
+            inputs = InputLayer(3, 512, 512, scale = 1.0 / 255, name = 'input1')
+            conv1 = Conv2d(8, 3, act = 'relu')(inputs)
+            conv2 = Conv2d(8, 3, act = 'relu')(inputs)
+            conv3 = Conv2d(8, 3)([conv1, conv2])
+            output1 = OutputLayer(name = 'output1')(conv3)
+            model = Model(self.s, inputs = inputs, outputs = output1)
+            model.compile()
+
+    def test_lack_inputs_outputs(self):
+        with self.assertRaises(DLPyError):
+            inputs = InputLayer(3, 512, 512, scale = 1.0 / 255, name = 'input1')
+            conv1 = Conv2d(8, 3, act = 'relu')(inputs)
+            conv2 = Conv2d(8, 3, act = 'relu')(inputs)
+            conv3 = Conv2d(8, 3)([conv1])
+            output1 = OutputLayer(name = 'output1')(conv3)
+            model = Model(self.s, inputs = inputs)
+            model.compile()
+
+        with self.assertRaises(DLPyError):
+            inputs = InputLayer(3, 512, 512, scale = 1.0 / 255, name = 'input1')
+            conv1 = Conv2d(8, 3, act = 'relu')(inputs)
+            conv2 = Conv2d(8, 3, act = 'relu')(inputs)
+            conv3 = Conv2d(8, 3)([conv1])
+            output1 = OutputLayer(name = 'output1')(conv3)
+            model = Model(self.s, outputs = output1)
+            model.compile()
 
     @classmethod
     def tearDownClass(cls):

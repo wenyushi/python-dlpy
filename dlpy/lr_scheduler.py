@@ -17,7 +17,7 @@
 #
 
 import math
-from .model import DLPyDict
+from dlpy.utils import DLPyDict
 
 
 class _LRScheduler(DLPyDict):

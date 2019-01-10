@@ -111,6 +111,7 @@ class Layer(object):
     type_desc = 'Base layer'
     can_be_last_layer = False
     number_of_instances = 0
+    layer_id = None
 
     def __init__(self, name=None, config=None, src_layers=None):
         self.name = name
@@ -133,15 +134,15 @@ class Layer(object):
 
     def __call__(self, inputs, **kwargs):
         layer_type = self.__class__.__name__
-        if isinstance(inputs, list) and len(inputs) > 1:
-            if layer_type not in ['Concat', 'Res', 'Scale', 'Dense']:
-                raise DLPyError('The input of {layer_type} should have only one layer.')
+        if isinstance(inputs, list):
+            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale', 'Dense']:
+                raise DLPyError('The input of {} should have only one layer.'.format(layer_type))
         else:
             inputs = [inputs]
         self.src_layers = self.src_layers or []
         self.src_layers = self.src_layers + inputs
 
-        '''give the layer a name'''
+        # give the layer a name
         self.count_instances()
         self.name = self.name or str(layer_type) + '_' + str(type(self).number_of_instances)
 
@@ -216,18 +217,23 @@ class Layer(object):
     @property
     def summary(self):
         ''' Return a DataFrame containing the layer information '''
-        return pd.DataFrame([[self.name, self.type, self.kernel_size,
-                              self.config.get('stride', None), self.activation,
+        if self.kernel_size is None:
+            kernel_size_ = ''
+        else:
+            kernel_size_ = self.kernel_size
+
+        return pd.DataFrame([[self.layer_id, self.name, self.type, kernel_size_,
+                              self.config.get('stride', ''), self.activation,
                               self.output_size, (self.num_weights, self.num_bias)]],
-                            columns=['Layer', 'Type', 'Kernel Size', 'Stride',
+                            columns=['Layer Id', 'Layer', 'Type', 'Kernel Size', 'Stride',
                                      'Activation', 'Output Size',
                                      'Number of Parameters'])
 
     @property
     def rnn_summary(self):
         ''' Return a DataFrame containing the layer information for rnn models'''
-        return pd.DataFrame([[self.name, self.type, self.activation, self.output_size]],
-                            columns=['Layer', 'Type', 'Activation', 'Output Size'])
+        return pd.DataFrame([[self.layer_id, self.name, self.type, self.activation, self.output_size]],
+                            columns=['Layer Id', 'Layer', 'Type', 'Activation', 'Output Size'])
 
 
 class InputLayer(Layer):
@@ -906,8 +912,8 @@ class Concat(Layer):
 
     Parameters
     ----------
-    src_layers : iterable Layer
-        Specifies the layers concatenated together
+    name : string, optional
+        Specifies the name of the layer.
     act : string, optional
         Specifies the activation function.
         Valid Values: AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP

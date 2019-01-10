@@ -46,7 +46,7 @@ class TestLRScheduler(unittest.TestCase):
         swat.options.cas.print_messages = False
         swat.options.interactive_mode = False
 
-        cls.s = swat.CAS('dlgrd009', 13319)
+        cls.s = swat.CAS('dlgrd009', 13313)
         cls.server_type = tm.get_cas_host_type(cls.s)
         cls.server_sep = '\\'
         if cls.server_type.startswith("lin") or cls.server_type.startswith("osx"):
