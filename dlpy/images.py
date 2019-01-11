@@ -18,7 +18,6 @@
 
 ''' Special functionality for CAS tables containing image data '''
 
-import matplotlib.pyplot as plt
 import numpy as np
 from swat.cas.table import CASTable
 from .utils import random_name, image_blocksize, caslibify
@@ -302,60 +301,6 @@ class ImageTable(CASTable):
         out.params.update(res.params)
 
         return out
-
-    def show(self, nimages=5, ncol=8, randomize=False, figsize=None):
-        '''
-        Display a grid of images
-
-        Parameters
-        ----------
-        nimages : int, optional
-            Specifies the number of images to be displayed.
-            If nimage is greater than the maximum number of images in the
-            table, it will be set to this maximum number.
-            Note: Specifying a large value for nimages can lead to slow
-            performance.
-        ncol : int, optional
-            Specifies the layout of the display, determine the number of
-            columns in the plots.
-        randomize : bool, optional
-            Specifies whether to randomly choose the images for display.
-
-        '''
-        nimages = min(nimages, len(self))
-
-        if randomize:
-            temp_tbl = self.retrieve('image.fetchimages', _messagelevel='error',
-                                     table=dict(
-                                         computedvars=['random_index'],
-                                         computedvarsprogram='call streaminit(-1);'
-                                                             'random_index='
-                                                             'rand("UNIFORM");',
-                                         **self.to_table_params()),
-                                     sortby='random_index', to=nimages)
-        else:
-            temp_tbl = self._retrieve('image.fetchimages', to=nimages)
-
-        if nimages > ncol:
-            nrow = nimages // ncol + 1
-        else:
-            nrow = 1
-            ncol = nimages
-        if figsize is None:
-            figsize = (16, 16 // ncol * nrow)
-        fig = plt.figure(figsize=figsize)
-
-        for i in range(nimages):
-            image = temp_tbl['Images']['Image'][i]
-            label = temp_tbl['Images']['Label'][i]
-            ax = fig.add_subplot(nrow, ncol, i + 1)
-            ax.set_title('{}'.format(label))
-            if len(image.size) == 2:
-                plt.imshow(np.array(image), cmap='Greys_r')
-            else:
-                plt.imshow(image)
-            plt.xticks([]), plt.yticks([])
-        plt.show()
 
     def crop(self, x=0, y=0, width=None, height=None, inplace=True, columns=None):
         '''
