@@ -198,6 +198,8 @@ class Layer(object):
         dict
 
         '''
+        if self.type == 'transconvo':
+            self.calculate_output_padding()
         new_params = {}
         for key, value in six.iteritems(self.config):
             if value is not None:
@@ -210,9 +212,10 @@ class Layer(object):
         new_params['type'] = self.type
         if self.type == 'input':
             return dict(name=self.name, layer=new_params)
-        else:
-            return dict(name=self.name, layer=new_params,
-                        srclayers=[item.name for item in self.src_layers])
+        elif self.type == 'transconvo':
+            del new_params['outputsize']
+        return dict(name = self.name, layer = new_params,
+                    srclayers = [item.name for item in self.src_layers])
 
     @property
     def summary(self):

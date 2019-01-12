@@ -139,9 +139,6 @@ class Network(Layer):
         sorted_layers = sorted(self.layers, key = lambda Layer: Layer.depth)
         self.num_params = 0
         for layer in sorted_layers:
-            if layer.type == 'transconvo':
-                layer.calculate_output_padding()
-                del layer.config['output_size']
             option = layer.to_model_params()
             rt = self._retrieve_('deeplearn.addlayer', model = self.model_name, **option)
             if rt.severity > 1:
