@@ -1687,7 +1687,8 @@ class FCMP(Layer):
         parameters = _unpack_config(parameters)
         # _clean_parameters(parameters)
         Layer.__init__(self, name, parameters, src_layers)
-        self._output_size = None
+        self._output_size = (width, height, depth)
+        self._num_weights = n_weights
         self.color_code = get_color(self.type)
 
     @property
@@ -1696,11 +1697,15 @@ class FCMP(Layer):
 
     @property
     def num_weights(self):
-        return self.n_weights
+        return self._num_weights
 
     @property
     def output_size(self):
         return self._output_size
+
+    @property
+    def num_bias(self):
+        return 0
 
 
 class ChannelShuffle(Layer):

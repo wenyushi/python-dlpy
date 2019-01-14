@@ -187,3 +187,105 @@ class TestSequential(tm.TestCase):
         # 512
         model.add(Segmentation(n_class = 2))
         model.print_summary()
+
+    def test_FCMP(self):
+        self.s.loadactionset('fcmpact')
+        self.s.addRoutines(
+            routineCode = {
+                '''
+                function forward_prop( srcHeight, srcWidth, srcDepth, srcY[*], weights[*], y_out[*] );
+                    outargs y_out;
+                    nWeights = 0;
+                    nNeurons = dim(y_out);
+                    srcNeurons = srcHeight*srcWidth*srcDepth;
+                    featuremapsize = srcHeight*srcWidth;
+                    gramsize = srcDepth*srcDepth;
+    
+                    array result_temp[1] /nosymbols;
+                    call dynamic_array(result_temp, srcDepth, srcDepth);
+    
+                    array matrix_reshape[1] /nosymbols;
+                    call dynamic_array(matrix_reshape, srcDepth, featuremapsize);
+                    /* reshape srcY tensor into (srcDepth, (srcHeight, srcWidth))*/
+                    do i=0 to srcNeurons;
+                        matrix_reshape[int((i-1)/featuremapsize)+1, mod((i-1),featuremapsize)+1] = srcY[i];
+                    end;
+                    put matrix_reshape=;
+                    array mat1_t[1] /nosymbols;
+                    call dynamic_array(mat1_t, featuremapsize, srcDepth);
+    
+                    /* mat1_t srcY tensor into ((srcHeight, srcWidth), srcDepth)*/
+                    call transpose(matrix_reshape, mat1_t);
+    
+                    /* mat1_t srcY tensor into (srcDepth, srcDepth)*/
+                    call mult(matrix_reshape, mat1_t, result_temp);
+    
+                    /* reshape result_temp and write into y_out */
+                    do i=1 to gramsize;
+                        y_out[i] = result_temp[int((i-1)/srcDepth)+1, mod((i-1),srcDepth)+1]/featuremapsize;
+                    end;
+                    put y_out=;
+                    return;
+                endsub;
+    
+                function back_prop( srcHeight, srcWidth, srcDepth, srcY[*], Y[*], weights[*], deltas[*],
+                                    gradient_out[*], srcDeltas_out[*]);
+                    /* deltas: partial derivative wrt Y[*] shape of its is (srcDepth, srcDepth);*/
+                    outargs srcDeltas_out, gradient_out;
+                    nWeights = 0;
+                    nNeurons = dim(Y);
+                    srcNeurons = srcHeight*srcWidth*srcDepth;
+                    featuremapsize = srcHeight*srcWidth;
+                    gramsize = srcDepth*srcDepth;
+    
+                    array result_temp[1] /nosymbols;
+                    call dynamic_array(result_temp, srcDepth, featuremapsize);
+    
+                    array deltas_reshape[1] /nosymbols;
+                    call dynamic_array(deltas_reshape, srcDepth, srcDepth);
+                    do i=1 to gramsize;
+                        deltas_reshape[int((i-1)/srcDepth)+1, mod((i-1),srcDepth)+1] = deltas[i]/featuremapsize;
+                    end;
+    
+                    array srcY_temp[1] /nosymbols;
+                    call dynamic_array(srcY_temp, srcDepth, featuremapsize);
+                    do i=1 to srcNeurons;
+                        srcY_temp[int((i-1)/featuremapsize)+1, mod((i-1),featuremapsize)+1] = srcY[i];
+                    end;
+    
+                    call mult(deltas_reshape, srcY_temp, result_temp);
+    
+                    do i=1 to srcNeurons;
+                        srcDeltas_out[i] = result_temp[int((i-1)/featuremapsize)+1, mod((i-1),featuremapsize)+1];
+                    end;
+                    return;
+                endsub;
+                '''},
+            package = "pkg",
+            saveTable = 1,
+            funcTable = dict(name = "gramfcmp", caslib = "casuser", replace = 1)
+        )
+        self.s.sessionProp.setsessopt(cmplib = 'CASUSER.gramfcmp')
+        model_table = 'cifar10'
+        factor = 8
+        model = Sequential(conn = self.s, model_table = model_table)
+
+        model.add(InputLayer(n_channels = 3, width = 4, height = 4, scale = 1.0 / 255,
+                             offsets = (103.939 / 255, 116.779 / 255, 123.68 / 255),
+                             random_flip = 'none', random_crop = 'unique'))
+
+        model.add(Conv2d(n_filters = 64 / factor, width = 3, height = 3, stride = 1))
+        # model.add(Conv2d(n_filters=64/factor, width=3, height=3, stride=1))
+        # model.add(Pooling(width=2, height=2, stride=2, pool='max'))
+        # # 14
+        # model.add(Conv2d(n_filters=128/factor, width=3, height=3, stride=1))
+        # model.add(Conv2d(n_filters=128/factor, width=3, height=3, stride=1))
+        # model.add(Pooling(width=2, height=2, stride=2, pool='max'))
+        # # 7
+        # model.add(Conv2d(n_filters=256/factor, width=3, height=3, sride=1))
+        # model.add(Conv2d(n_filters=256/factor, width=3, height=3, stride=1))
+        # model.add(Conv2d(n_filters=256/factor, width=3, height=3, stride=1))
+
+        model.add(FCMP(width = 8, height = 8, depth = 1, forward_func = 'forward_prop', backward_func = 'back_prop',
+                       n_weights = 0))
+        model.add(OutputLayer(act = 'softmax', n = 10))
