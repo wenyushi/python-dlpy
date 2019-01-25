@@ -1496,6 +1496,7 @@ class Reshape(Layer):
 
 class Transconvo(Layer):
     """
+    TODO:
     Transconvo layer
 
     Parameters
@@ -1508,8 +1509,6 @@ class Transconvo(Layer):
         | default: AUTO
     fcmp_act : string, optional
         Specifies the FCMP activation function for the layer.
-    src_layers : iterable Layer, optional
-        Specifies the layers directed to this layer.
     height : int, required
         Specifies the height of the input data. By default the height is determined automatically
         when the model training begins.
@@ -1761,6 +1760,235 @@ class ChannelShuffle(Layer):
             if self.src_layers is None:
                 self._output_size = 0
             self._output_size = self.src_layers[0].output_size
+        return self._output_size
+
+    @property
+    def num_bias(self):
+        return 0
+
+
+class RegionProposal(Layer):
+    '''
+    RegionProposal layer
+
+    Parameters
+    ----------
+    name : string, optional
+        Specifies the name of the layer.
+    anchor_ratio : iter-of-float
+        Specifies the anchor height and width ratios (h/w) used.
+    anchor_scale : iter-of-float
+        Specifies the anchor scales used based on base_anchor_size
+    act : string, optional
+        Specifies the activation function.
+        Valid Values: AUTO, IDENTITY, LOGISTIC, SOFTMAX
+        Default: AUTO
+    anchor_num_to_sample : int, optional
+        Specifies the number of anchors to sample for training the region proposal network
+        Default: 256
+    base_anchor_size : int, optional
+        Specifies the basic anchor size in width and height (in pixels) in the original input image dimension
+        Default: 16
+    do_rpn_only : Boolean, optional
+        Specifies that in the model, only Region Proposal task is to be done in the model,
+        not including the Fast RCNN task
+        Default: FALSE
+    max_label_per_image: int, optional
+        Specifies the maximum number of labels per training image.
+        Default: 200
+    proposed_roi_num_score: int, optional
+        Specifies the number of ROI (Region of Interest) to propose in the scoring phase
+        Default: 300
+    proposed_roi_num_train: int, optional
+        Specifies the number of ROI (Region of Interest) to propose used for RPN training, and also the pool to
+        sample from for FastRCNN Training in the training phase
+        Default: 2000
+    roi_train_sample_num: int, optional
+        Specifies the number of ROIs(Regions of Interests) to sample after NMS(Non-maximum Suppression)
+        is performed in the training phase.
+        Default: 128
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`RegionProposal`
+
+    '''
+    type = 'region_proposal'
+    type_label = 'RegionProposal'
+    type_desc = 'Region Proposal layer'
+    can_be_last_layer = False
+    number_of_instances = 0
+
+    def __init__(self, anchor_ratio, anchor_scale, name=None, act='AUTO', anchor_num_to_sample=256,
+                 base_anchor_size=16, do_rpn_only=False, max_label_per_image=200, proposed_roi_num_score=300,
+                 proposed_roi_num_train=2000, roi_train_sample_num=128, src_layers=None, **kwargs):
+
+        if not __dev__ and len(kwargs) > 0:
+            raise DLPyError('**kwargs can be used only in development mode.')
+
+        parameters = locals()
+        parameters = _unpack_config(parameters)
+        # _clean_parameters(parameters)
+        Layer.__init__(self, name, parameters, src_layers)
+        self._output_size = None
+        self.color_code = get_color(self.type)
+
+    @property
+    def kernel_size(self):
+        return None
+
+    @property
+    def num_weights(self):
+        return 0
+
+    @property
+    def output_size(self):
+        if self._output_size is None:
+            self._output_size = self.src_layers[0].output_size
+        return self._output_size
+
+    @property
+    def num_bias(self):
+        return 0
+
+
+class ROIPooling(Layer):
+    '''
+    ROIPooling layer
+
+    Parameters
+    ----------
+    name : string, optional
+        Specifies the name of the layer.
+    act : string, optional
+        Specifies the activation function.
+        Valid Values: AUTO, IDENTITY,
+        Default: AUTO
+    output_height : int, optional
+        Specifies the output height of the region pooling layer.
+        Default: 7
+    output_width : int, optional
+        Specifies the output width of the region pooling layer.
+        Default: 7
+    spatial_scale: float, optional
+        Specifies the spatial scale of ROIs coordinates (in the input image space) in related to the
+        feature map pixel space.
+        Default: 0.0625
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`ROIPooling`
+
+    '''
+    type = 'roi_pooling'
+    type_label = 'ROIPooling'
+    type_desc = 'ROI Pooling layer'
+    can_be_last_layer = False
+    number_of_instances = 0
+
+    def __init__(self, name=None, act='AUTO', output_height=7, output_width=7, spatial_scale=0.0625, src_layers=None,
+                 **kwargs):
+
+        if not __dev__ and len(kwargs) > 0:
+            raise DLPyError('**kwargs can be used only in development mode.')
+
+        parameters = locals()
+        parameters = _unpack_config(parameters)
+        # _clean_parameters(parameters)
+        Layer.__init__(self, name, parameters, src_layers)
+        self._output_size = None
+        self.color_code = get_color(self.type)
+
+    @property
+    def kernel_size(self):
+        return None
+
+    @property
+    def num_weights(self):
+        return 0
+
+    @property
+    def output_size(self):
+        if self._output_size is None:
+            self._output_size = (self.config['output_width'], self.config['output_height'],
+                                 self.src_layers[0].output_size[2])
+        return self._output_size
+
+    @property
+    def num_bias(self):
+        return 0
+
+
+class FastRCNN(Layer):
+    '''
+    FastRCNN layer
+
+    Parameters
+    ----------
+    name : string, optional
+        Specifies the name of the layer.
+    act : string, optional
+        Specifies the activation function.
+        Valid Values: AUTO, IDENTITY,
+        Default: AUTO
+    class_number : int, optional
+        Specifies the number of categories for the objects in the layer
+        Default: 20
+    detection_threshold : float, optional
+        Specifies the threshold for object detection.
+        Default: 0.5
+    max_label_per_image: int, optional
+        Specifies the maximum number of labels per training image.
+        Default: 200
+    max_object_num: int, optional
+        Specifies the maximum number of object to detect
+        Default: 50
+    nms_iou_threshold: float, optional
+        Specifies the IOU threshold of maximum suppression in object detection
+        Default: 0.3
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`FastRCNN`
+
+    '''
+    type = 'fast_rcnn'
+    type_label = 'FastRCNN'
+    type_desc = 'Fast RCNN layer'
+    can_be_last_layer = False
+    number_of_instances = 0
+
+    def __init__(self, name=None, act='AUTO', class_number=20, detection_threshold=0.5, max_label_per_image=200,
+                 max_object_num=50, nms_iou_threshold=0.3, src_layers=None, **kwargs):
+
+        if not __dev__ and len(kwargs) > 0:
+            raise DLPyError('**kwargs can be used only in development mode.')
+
+        parameters = locals()
+        parameters = _unpack_config(parameters)
+        # _clean_parameters(parameters)
+        Layer.__init__(self, name, parameters, src_layers)
+        self._output_size = None
+        self.color_code = get_color(self.type)
+
+    @property
+    def kernel_size(self):
+        return None
+
+    @property
+    def num_weights(self):
+        return 0
+
+    @property
+    def output_size(self):
+        if self._output_size is None:
+            self._output_size = self._output_size = self.src_layers[0].output_size
         return self._output_size
 
     @property
