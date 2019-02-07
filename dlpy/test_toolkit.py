@@ -69,8 +69,8 @@ def almost_match(history, benchmark, significant=4):
         Desired precision.
         Default: 4
     '''
-    for key, value in benchmark.items:
+    for key, value in benchmark.items():
         # assert(history['key'] != len(value), 'The length of benchmark and history should be equal.')
-        for actual, desired in zip(history['key'], value):
+        for actual, desired in zip(history[key], value):
             np.testing.assert_approx_equal(actual, desired, significant)
 
