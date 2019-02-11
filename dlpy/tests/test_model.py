@@ -932,6 +932,64 @@ class TestModel(unittest.TestCase):
         self.assertAlmostEqual(onnx_model.graph.node[0].attribute[0].floats[2], 0.3)
         self.assertAlmostEqual(onnx_model.graph.node[0].attribute[1].f, 1/255.)
 
+    def test_load_reshape_detection(self):
+        if self.data_dir is None:
+            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
+        yolo_model = Model(self.s)
+        yolo_model.load(self.data_dir + 'YOLOV2_MULTISIZE.sashdat')
+        model_df = self.s.fetch(table = dict(name = yolo_model.model_name,
+                                             where = '_DLKey0_ eq "detection1" or _DLKey0_ eq "reshape1"'), to = 50).Fetch
+        anchors_5 = model_df['_DLNumVal_'][model_df['_DLKey1_'] == 'detectionopts.anchors.8'].tolist()[0]
+        self.assertAlmostEqual(anchors_5, 1.0907, 4)
+        depth = model_df['_DLNumVal_'][model_df['_DLKey1_'] == 'reshapeopts.depth'].tolist()[0]
+        self.assertEqual(depth, 256)
+
+    def test_plot_ticks(self):
+
+        model1 = Sequential(self.s, model_table='Simple_CNN1')
+        model1.add(InputLayer(3, 224, 224))
+        model1.add(Conv2d(8, 7))
+        model1.add(Pooling(2))
+        model1.add(Conv2d(8, 7))
+        model1.add(Pooling(2))
+        model1.add(Dense(16))
+        model1.add(OutputLayer(act='softmax', n=2))
+
+        if self.data_dir is None:
+            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
+
+        caslib, path = caslibify(self.s, path=self.data_dir+'images.sashdat', task='load')
+
+        self.s.table.loadtable(caslib=caslib,
+                               casout={'name': 'eee', 'replace': True},
+                               path=path)
+
+        r = model1.fit(data='eee', inputs='_image_', target='_label_', lr=0.001, max_epochs=5)
+        
+        # Test default tick_frequency value of 1
+        ax = model1.plot_training_history()
+        self.assertEqual(len(ax.xaxis.majorTicks), model1.n_epochs)
+
+        # Test even
+        tick_frequency = 2
+        ax = model1.plot_training_history(tick_frequency=tick_frequency)
+        self.assertEqual(len(ax.xaxis.majorTicks), model1.n_epochs // tick_frequency + 1)
+
+        # Test odd
+        tick_frequency = 3
+        ax = model1.plot_training_history(tick_frequency=tick_frequency)
+        self.assertEqual(len(ax.xaxis.majorTicks), model1.n_epochs // tick_frequency + 1)
+
+        # Test max
+        tick_frequency = model1.n_epochs
+        ax = model1.plot_training_history(tick_frequency=tick_frequency)
+        self.assertEqual(len(ax.xaxis.majorTicks), model1.n_epochs // tick_frequency + 1)
+        
+        # Test 0 
+        tick_frequency = 0
+        ax = model1.plot_training_history(tick_frequency=tick_frequency)
+        self.assertEqual(len(ax.xaxis.majorTicks), model1.n_epochs)
+
     @classmethod
     def tearDownClass(cls):
         # tear down tests
