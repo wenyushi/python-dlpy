@@ -41,7 +41,7 @@ class TestNetwork(tm.TestCase):
         swat.options.cas.print_messages = False
         swat.options.interactive_mode = False
 
-        cls.s = swat.CAS()
+        cls.s = swat.CAS('dlgrd009', 13315)
         cls.server_type = tm.get_cas_host_type(cls.s)
 
     def test_option_type(self):
@@ -272,6 +272,23 @@ class TestNetwork(tm.TestCase):
             output1 = OutputLayer(name='output1')(conv3)
             model = Model(self.s, outputs=output1)
             model.compile()
+
+    def test_short_cut(self):
+        inputs = InputLayer(1, 28, 28, scale = 1.0 / 255, name = 'InputLayer_1')
+        fc1 = Dense(n = 128, src_layers = inputs, name = 'fc1')(inputs)
+        fc2 = Dense(n = 64, name = 'fc2')(fc1)
+        fc3 = Dense(n = 64, name = 'fc3')([fc2, fc1])
+        output1 = OutputLayer(n = 10, name = 'OutputLayer_1', src_layers = fc3)
+        model = Model(self.s, inputs = inputs, outputs = output1)
+        model.compile()
+
+        inputs = InputLayer(1, 28, 28, scale = 1.0 / 255, name = 'InputLayer_1')
+        fc1 = Dense(n = 128, src_layers = inputs, name = 'fc1')(inputs)
+        fc2 = Dense(n = 64, name = 'fc2')(fc1)
+        fc3 = Dense(n = 64, name = 'fc3')([fc1, fc2])
+        output1 = OutputLayer(n = 10, name = 'OutputLayer_1', src_layers = fc3)
+        mode2 = Model(self.s, inputs = inputs, outputs = output1)
+        mode2.compile()
 
     @classmethod
     def tearDownClass(cls):
