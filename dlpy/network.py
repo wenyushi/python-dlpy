@@ -107,10 +107,13 @@ class Network(Layer):
                     self.layers.append(start)
                 return
             for layer in start.src_layers:
-                build_map(layer)
-                ''' if all of src_layer of layer is in layers list, add it in layers list'''
-                if all(i in self.layers for i in start.src_layers):
-                    self.layers.append(start)
+                if layer not in self.layers:
+                    build_map(layer)
+                # the condition fixes short cut bug.
+                if start not in self.layers:
+                    # if all of src_layer of layer is in layers list, add it in layers list
+                    if all(i in self.layers for i in start.src_layers):
+                        self.layers.append(start)
                 # set the layer's depth
                 layer.depth = 0 if str(layer.__class__.__name__) == 'InputLayer' \
                     else max([i.depth for i in layer.src_layers]) + 1

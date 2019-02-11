@@ -156,6 +156,9 @@ class Layer(object):
     def __lt__(self, other):
         return self.depth < other.depth
 
+    def __str__(self):
+        return self.name
+
     @classmethod
     def count_instances(cls):
         cls.number_of_instances += 1

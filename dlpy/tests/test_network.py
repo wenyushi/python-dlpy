@@ -272,14 +272,22 @@ class TestNetwork(tm.TestCase):
             model = Model(self.s, outputs = output1)
             model.compile()
 
-    def test_fc3(self):
+    def test_short_cut(self):
         inputs = InputLayer(1, 28, 28, scale = 1.0 / 255, name = 'InputLayer_1')
-        fc1 = Dense(n = 128, src_layers = inputs)(inputs)
-        fc2 = Dense(n = 64)(fc1)
-        fc3 = Dense(n = 64)([fc2, fc1])
+        fc1 = Dense(n = 128, src_layers = inputs, name = 'fc1')(inputs)
+        fc2 = Dense(n = 64, name = 'fc2')(fc1)
+        fc3 = Dense(n = 64, name = 'fc3')([fc2, fc1])
         output1 = OutputLayer(n = 10, name = 'OutputLayer_1', src_layers = fc3)
         model = Model(self.s, inputs = inputs, outputs = output1)
         model.compile()
+
+        inputs = InputLayer(1, 28, 28, scale = 1.0 / 255, name = 'InputLayer_1')
+        fc1 = Dense(n = 128, src_layers = inputs, name = 'fc1')(inputs)
+        fc2 = Dense(n = 64, name = 'fc2')(fc1)
+        fc3 = Dense(n = 64, name = 'fc3')([fc1, fc2])
+        output1 = OutputLayer(n = 10, name = 'OutputLayer_1', src_layers = fc3)
+        mode2 = Model(self.s, inputs = inputs, outputs = output1)
+        mode2.compile()
 
     @classmethod
     def tearDownClass(cls):
