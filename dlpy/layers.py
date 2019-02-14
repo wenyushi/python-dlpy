@@ -1511,8 +1511,6 @@ class Transconvo(Layer):
         | default: AUTO
     fcmp_act : string, optional
         Specifies the FCMP activation function for the layer.
-    src_layers : iterable Layer, optional
-        Specifies the layers directed to this layer.
     height : int, required
         Specifies the height of the input data. By default the height is determined automatically
         when the model training begins.
@@ -1819,7 +1817,7 @@ class RegionProposal(Layer):
     :class:`RegionProposal`
 
     '''
-    type = 'region_proposal'
+    type = 'regionproposal'
     type_label = 'RegionProposal'
     type_desc = 'Region Proposal layer'
     can_be_last_layer = False
@@ -1888,7 +1886,7 @@ class ROIPooling(Layer):
     :class:`ROIPooling`
 
     '''
-    type = 'roi_pooling'
+    type = 'roipooling'
     type_label = 'ROIPooling'
     type_desc = 'ROI Pooling layer'
     can_be_last_layer = False
@@ -1962,7 +1960,7 @@ class FastRCNN(Layer):
     :class:`FastRCNN`
 
     '''
-    type = 'fast_rcnn'
+    type = 'fastrcnn'
     type_label = 'FastRCNN'
     type_desc = 'Fast RCNN layer'
     can_be_last_layer = False
