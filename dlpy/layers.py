@@ -216,7 +216,8 @@ class Layer(object):
         if self.type == 'input':
             return dict(name=self.name, layer=new_params)
         elif self.type == 'transconvo':
-            del new_params['outputsize']
+            if 'outputsize' in new_params:
+                del new_params['outputsize']
         return dict(name = self.name, layer = new_params,
                     srclayers = [item.name for item in self.src_layers])
 
