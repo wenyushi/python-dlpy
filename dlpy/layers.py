@@ -1836,6 +1836,7 @@ class RegionProposal(Layer):
         parameters = _unpack_config(parameters)
         # _clean_parameters(parameters)
         Layer.__init__(self, name, parameters, src_layers)
+        self.proposed_roi_num_train = proposed_roi_num_score
         self._output_size = None
         self.color_code = get_color(self.type)
 
@@ -1850,7 +1851,7 @@ class RegionProposal(Layer):
     @property
     def output_size(self):
         if self._output_size is None:
-            self._output_size = self.src_layers[0].output_size
+            self._output_size = (5, self.proposed_roi_num_train)
         return self._output_size
 
     @property
