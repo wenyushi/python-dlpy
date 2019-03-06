@@ -48,6 +48,7 @@ class ImageTable(CASTable):
     :class:`ImageTable`
 
     '''
+    running_image_column = '_image_'
 
     def __init__(self, name, **table_params):
         CASTable.__init__(self, name, **table_params)
@@ -115,8 +116,9 @@ class ImageTable(CASTable):
                              ',$char10.),".jpg");').format(label_col))
 
         if image_col != '_image_':
-            computedvars.append('_image_')
-            code.append('_image_ = {};'.format(image_col))
+            cls.running_image_column = image_col
+            #computedvars.append('_image_')
+            #code.append('_image_ = {};'.format(image_col))
 
         if label_col != '_label_':
             computedvars.append('_label_')
@@ -136,7 +138,7 @@ class ImageTable(CASTable):
                       table=table_opts,
                       casout=dict(replace=True, blocksize=32, **casout))
 
-        column_names = ['_image_', '_label_', '_filename_0', '_id_']
+        column_names = [cls.running_image_column, '_label_', '_filename_0', '_id_']
         if columns is not None:
             if not isinstance(columns, list):
                 columns = list(columns)
@@ -202,7 +204,7 @@ class ImageTable(CASTable):
                       recurse=True, labellevels=-1,
                       path=path, caslib=caslib, **kwargs)
 
-        code = []
+        code=[]
         code.append('length _filename_0 varchar(*);')
         code.append('_loc1 = LENGTH(_path_) - INDEX(REVERSE(_path_),\'/\')+2;')
         code.append('_filename_0 = SUBSTR(_path_,_loc1);')
@@ -253,7 +255,7 @@ class ImageTable(CASTable):
         file_name = '_filename_{}'.format(self.patch_level)
 
         rt = self._retrieve('image.saveimages', caslib=caslib,
-                       images=dict(table=self.to_table_params(), path=file_name),
+                       images=dict(table=self.to_table_params(), path=file_name, image=self.running_image_column),
                        labellevels=1)
 
         self._retrieve('dropcaslib', caslib=caslib)
@@ -297,7 +299,7 @@ class ImageTable(CASTable):
             casout['name'] = random_name()
 
         res = self._retrieve('table.partition', casout=casout, table=self)['casTable']
-        out = ImageTable.from_table(tbl=res)
+        out = ImageTable.from_table(tbl=res, image_col=self.running_image_column)
         out.params.update(res.params)
 
         return out
@@ -345,6 +347,7 @@ class ImageTable(CASTable):
         if inplace:
             self._retrieve('image.processimages',
                            copyvars=column_names,
+                           image=self.running_image_column,
                            casout=dict(replace=True, blocksize=blocksize,
                                        **self.to_outtable_params()),
                            imagefunctions=[
@@ -396,6 +399,7 @@ class ImageTable(CASTable):
         if inplace:
             self._retrieve('image.processimages',
                            copyvars=column_names,
+                           image=self.running_image_column,
                            casout=dict(replace=True, blocksize=blocksize,
                                        **self.to_outtable_params()),
                            imagefunctions=[
@@ -487,6 +491,7 @@ class ImageTable(CASTable):
         if inplace:
             self._retrieve('image.augmentimages',
                            copyvars=column_names,
+                           image=self.running_image_column,
                            casout=dict(replace=True, **self.to_outtable_params()),
                            croplist=croplist)
 
@@ -583,6 +588,7 @@ class ImageTable(CASTable):
         if inplace:
             self._retrieve('image.augmentimages',
                            copyvars=column_names,
+                           image=self.running_image_column,
                            casout=dict(replace=True, **self.to_outtable_params()),
                            croplist=croplist,
                            randomratio=random_ratio,
@@ -680,6 +686,7 @@ class ImageTable(CASTable):
         if inplace:
             self._retrieve('image.augmentimages',
                            copyvars=column_names,
+                           image=self.running_image_column,
                            casout=dict(replace=True, **self.to_outtable_params()),
                            croplist=croplist,
                            writerandomly=True)
@@ -732,7 +739,7 @@ class ImageTable(CASTable):
         :class:`pd.Series`
 
         '''
-        out = self._retrieve('image.summarizeimages')['Summary']
+        out = self._retrieve('image.summarizeimages', image=self.running_image_column)['Summary']
         out = out.T.drop(['Column'])[0]
         out.name = None
         return out

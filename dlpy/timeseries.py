@@ -20,7 +20,7 @@
 
 from __future__ import (print_function, division, absolute_import, unicode_literals)
 from swat.cas.table import CASTable
-from .utils import random_name, get_cas_host_type
+from .utils import random_name, get_cas_host_type, char_to_double, int_to_double
 from dlpy.utils import DLPyError
 from swat.cas import datamsghandlers
 import numpy as np
@@ -32,6 +32,197 @@ import numbers
 import re
 import swat
 
+
+def plot_timeseries(tbl, timeid, timeseries, figure=None, 
+                    groupid=None, start_time=None, end_time=None, xlim=None, 
+                    ylim=None, xlabel=None, ylabel=None, xdate_format=None,
+                    title=None, figsize=None, 
+                    fontsize_spec=None, **kwargs):
+    '''
+    Create an timeseries line plot from a CASTable or pandas DataFrame
+
+    Parameters
+    ----------
+    tbl : :class:`CASTable` or :class:`pandas.DataFrame` or :class:`pandas.Series`
+        The input table for the plot. If it is CASTable, it will be fetched to 
+        the client. If it is pandas.Series, the index name will become timeid, 
+        the series name will become timeseries. 
+    timeid : str
+        The name of the timeid variable. It will be the value to be used in the 
+        x-axis.
+    timeseries : str
+        The name of the column contains the timeseries value. It will be the
+        value to be used in the y-axis.
+    figure : two-element-tuple, optional
+        The tuple must be in the form (:class:`matplotlib.figure.Figure`,
+        :class:`matplotlib.axes.Axes`). These are the figure and axes that the
+        user wants to plot on. It can be used to plot new timeseries plot on
+        pre-existing figures.
+        Default: None
+    groupid : dict, optional
+        It is in the format {column1 : value1, column2 : value2, ...}.
+        It is used to plot subset of the data where column1 = value1 and 
+        column2 = value2, etc.
+        Default: None, which means do not subset the data.
+    start_time : :class:`datetime.datetime` or :class:`datetime.date`, optional
+        The start time of the plotted timeseries. 
+        Default: None, which means the plot starts at the beginning of the
+        timeseries. 
+    end_time : :class:`datetime.datetime` or :class:`datetime.date`, optional
+        The end time of the plotted timeseries.
+        Default: None, which means the plot ends at the end of the timeseries.
+    xlim : tuple, optional
+        Set the data limits for the x-axis.
+        Default: None
+    ylim : tuple, optional
+        Set the data limits for the y-axis.
+        Default: None
+    xlabel : string, optional
+        Set the label for the x-axis.
+    ylabel : string, optional
+        Set the label for the y-axis.
+    xdate_format : string, optional
+        If the x-axis represents date or datetime, this is the date or datetime 
+        format string. (e.g. '%Y-%m-%d' is the format of 2000-03-10, 
+        refer to documentation for :meth:`datetime.datetime.strftime`)
+        Default: None
+    title : string, optional
+        Set the title of the figure.
+        Default: None
+    figsize : tuple, optional
+        The size of the figure.
+        Default: None
+    fontsize_spec : dict, optional
+        It specifies the fontsize for 'xlabel', 'ylabel', 'xtick', 'ytick', 
+        'legend' and 'title'. (e.g. {'xlabel':14, 'ylabel':14}).
+        If None, and figure is specified, then it will take from provided
+        figure object. Otherwise, it will take the default fontsize, which are
+        {'xlabel':16, 'ylabel':16, 'xtick':14, 'ytick':14, 'legend':14, 'title':20}
+        Default: None
+    `**kwargs` : keyword arguments, optional
+        Options to pass to matplotlib plotting method.    
+
+    Returns
+    -------
+    (:class:`matplotlib.figure.Figure`, :class:`matplotlib.axes.Axes`)
+
+    '''
+    default_fontsize_spec = {'xlabel':16, 'ylabel':16, 'xtick':14,
+                             'ytick':14, 'legend':14, 'title':20}
+    
+    if figure is None:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+        
+        if fontsize_spec is not None:
+            default_fontsize_spec.update(fontsize_spec)
+            
+        fontsize_spec = default_fontsize_spec
+    else:
+        fig, ax = figure
+        if fontsize_spec is None:
+            fontsize_spec = {}
+            
+        if 'legend' not in fontsize_spec.keys():
+            fontsize_spec['legend'] = default_fontsize_spec['legend']
+        
+    if isinstance(tbl, CASTable):
+        if groupid is None:
+            tbl = tbl.to_frame()
+        else:
+            where_clause_list = []
+            for gid in groupid.keys():
+                where_clause_list.append(gid + '=' + str(groupid[gid]))
+                
+            where_clause = ' and '.join(where_clause_list)
+            tbl = tbl.query(where_clause)
+            tbl = tbl.to_frame()
+    else:
+        if isinstance(tbl, pd.Series):
+            timeseries = tbl.name
+            tbl = tbl.reset_index()
+            timeid = [colname for colname in tbl.columns if colname != timeseries][0]
+            
+        if groupid is not None:
+            for gid in groupid.keys():
+                tbl = tbl.loc[tbl[gid]==groupid[gid]]
+
+    if not (np.issubdtype(tbl[timeid].dtype, np.integer) or
+            np.issubdtype(tbl[timeid].dtype, np.floating)):
+        tbl[timeid] = pd.to_datetime(tbl[timeid])
+        fig.autofmt_xdate()
+        if xdate_format is not None:
+            import matplotlib.dates as mdates
+            xfmt = mdates.DateFormatter(xdate_format)
+            ax.xaxis.set_major_formatter(xfmt)
+                
+    if start_time is not None:
+        if isinstance(start_time, datetime.date):
+            start_time = pd.Timestamp(start_time)
+            
+        tbl = tbl.loc[tbl[timeid]>=start_time]
+    
+    if end_time is not None:
+        if isinstance(start_time, datetime.date):
+            end_time = pd.Timestamp(end_time)
+            
+        tbl = tbl.loc[tbl[timeid]<=end_time]
+        
+    tbl = tbl.sort_values(timeid)
+               
+    ax.plot(tbl[timeid], tbl[timeseries], **kwargs)
+    
+    if xlabel is not None:    
+        if 'xlabel' in fontsize_spec.keys():
+            ax.set_xlabel(xlabel, fontsize=fontsize_spec['xlabel'])
+        else:
+            ax.set_xlabel(xlabel)
+    elif figure is not None:
+        if 'xlabel' in fontsize_spec.keys():
+            ax.set_xlabel(ax.get_xlabel(), fontsize=fontsize_spec['xlabel'])
+    else:
+        ax.set_xlabel(timeid, fontsize=fontsize_spec['xlabel'])
+            
+        
+    if ylabel is not None:
+        if 'ylabel' in fontsize_spec.keys():
+            ax.set_ylabel(ylabel, fontsize=fontsize_spec['ylabel'])
+        else:
+            ax.set_ylabel(ylabel)
+    elif figure is not None:
+        if 'ylabel' in fontsize_spec.keys():
+            ax.set_ylabel(ax.get_ylabel(), fontsize=fontsize_spec['ylabel'])
+    else:
+        ax.set_ylabel(timeseries, fontsize=fontsize_spec['ylabel'])
+    
+    if xlim is not None:    
+        ax.set_xlim(xlim)
+        
+    if ylim is not None:
+        ax.set_ylim(ylim)
+        
+    if title is not None:
+        if 'title' in fontsize_spec.keys():
+            ax.set_title(title, fontsize=fontsize_spec['title'])
+        else:
+            ax.set_title(title)
+    elif figure is not None:
+        if 'title' in fontsize_spec.keys():
+            ax.set_title(ax.get_title(), fontsize=fontsize_spec['title'])
+        
+    ax.legend(loc='best', bbox_to_anchor=(1, 1), prop={'size': fontsize_spec['legend']})
+    if 'xtick' in fontsize_spec.keys():
+        ax.get_xaxis().set_tick_params(direction='out', labelsize=fontsize_spec['xtick'])
+    else:
+        ax.get_xaxis().set_tick_params(direction='out')
+        
+    if 'ytick' in fontsize_spec.keys():
+        ax.get_yaxis().set_tick_params(direction='out', labelsize=fontsize_spec['ytick'])
+    else:
+        ax.get_yaxis().set_tick_params(direction='out') 
+    
+     
+    return (fig, ax)
+        
 
 class TimeseriesTable(CASTable):
     '''
@@ -460,7 +651,7 @@ class TimeseriesTable(CASTable):
             self.timeseries = [self.timeseries]
         
         if set(self.timeseries).issubset(tbl_colinfo.Column):
-            self.char_to_double(conn, tbl_colinfo, input_tbl_name, 
+            char_to_double(conn, tbl_colinfo, input_tbl_name,
                                input_tbl_name, self.timeseries)
         else:
             raise ValueError('''One or more variables specified in 'timeseries' 
@@ -581,7 +772,7 @@ class TimeseriesTable(CASTable):
             self.groupby_var = [self.groupby_var]
         
         if set(self.groupby_var).issubset(tbl_colinfo.Column):
-            self.int_to_double(conn, tbl_colinfo, input_tbl_name, 
+            int_to_double(conn, tbl_colinfo, input_tbl_name,
                                input_tbl_name, self.groupby_var)
         else:
             raise ValueError('''One or more variables specified in 'groupby' 
@@ -726,7 +917,7 @@ class TimeseriesTable(CASTable):
             self.groupby_var = [self.groupby_var]
         
         if set(self.groupby_var).issubset(tbl_colinfo.Column):
-            self.int_to_double(conn, tbl_colinfo, input_tbl_name, 
+            int_to_double(conn, tbl_colinfo, input_tbl_name,
                                input_tbl_name, self.groupby_var)
         else:
             raise ValueError('''One or more variables specified in 'groupby' 
@@ -1129,77 +1320,5 @@ class TimeseriesTable(CASTable):
         
         return (None, None)
 
-    @staticmethod
-    def int_to_double(conn, tbl_colinfo, input_tbl_name, 
-                      output_tbl_name, varlist, num_fmt='8.'):
-        varlist_lower = [var.lower() for var in varlist]
-    
-        int_list = tbl_colinfo.loc[(
-                (tbl_colinfo.Column.str.lower().isin(varlist_lower)) &
-                 (tbl_colinfo.Type.str.startswith('int'))
-                 ),'Column'].tolist()
-    
-        if len(int_list) > 0:
-            fmt_code = '''
-            data {0};
-            set {1};
-            '''.format(output_tbl_name, input_tbl_name)
 
-            for var in int_list:
-                fmt_code += '''
-                format {0} {1};       
-                '''.format(var, num_fmt)
-                
-            fmt_code += 'run;'    
-        else:
-            fmt_code = '''
-            data {0};
-            set {1};
-            run;
-            '''.format(output_tbl_name, input_tbl_name)            
 
-        conn.retrieve('dataStep.runCode', _messagelevel='error', code=fmt_code)
-    
-    @staticmethod
-    def char_to_double(conn, tbl_colinfo, input_tbl_name, 
-                       output_tbl_name, varlist, num_fmt='8.'):
-        varlist_lower = [var.lower() for var in varlist]
-        
-        fmt_list = tbl_colinfo.loc[(
-                (tbl_colinfo.Column.str.lower().isin(varlist_lower)) &
-                 (tbl_colinfo.Type != 'double')
-                 ),'Column'].tolist()
-    
-        int_list = tbl_colinfo.loc[(
-                (tbl_colinfo.Column.str.lower().isin(varlist_lower)) &
-                 (tbl_colinfo.Type.str.startswith('int'))
-                 ),'Column'].tolist()
-    
-        char_list = [var for var in fmt_list if var not in int_list]
-    
-        if len(char_list) > 0:
-            fmt_code = '''
-            data {0};
-            set {1}(rename=(
-            '''.format(output_tbl_name, input_tbl_name)
-                      
-            for var in char_list:
-                fmt_code += '{0}=c_{0} '.format(var) #The space is important
-                
-            fmt_code += '));'
-            
-            for var in char_list:
-                fmt_code += '''
-                {0} = input(c_{0},{1});
-                drop c_{0};         
-                '''.format(var, num_fmt)
-                
-            fmt_code += 'run;'          
-        else:
-            fmt_code = '''
-            data {0};
-            set {1};
-            run;
-            '''.format(output_tbl_name, input_tbl_name)            
-        
-        conn.retrieve('dataStep.runCode', _messagelevel='error', code=fmt_code)

@@ -87,6 +87,39 @@ def get_color(name, palette='default'):
     return PALETTES[palette].get(name, PALETTES[palette]['unknown'])
 
 
+class Tensor(object):
+    def __init__(self, op, value=None):
+        self._op = op  # the layer that produces the tensor.
+        self._value = value
+
+    @property
+    def shape(self):
+        # TODO: check shape
+        NotImplemented
+
+
+class Node(object):
+    '''
+    Represent the connectivity between the layers.
+
+    Parameters
+    ----------
+    inbound_layers : iter-of-Layers
+        Specifies the input layers of the Node
+    outbound_layer : Layer
+        Specifies the outbound layer of the Node
+
+    Returns
+    -------
+    :class:`Node`
+
+    '''
+    def __init__(self, inbound_layers, outbound_layer):
+        # multiple inbound layer but one output connection layer
+        self.inbound_layers = inbound_layers
+        self.outbound_layer = outbound_layer
+
+
 class Layer(object):
     '''
     Base class for all layers
@@ -117,6 +150,7 @@ class Layer(object):
         self.name = name
         self.config = config
         self.depth = None
+        self._inbound_nodes = []
 
         if src_layers is None:
             self.src_layers = None
@@ -132,15 +166,23 @@ class Layer(object):
         else:
             self.activation = None
 
-    def __call__(self, inputs, **kwargs):
+    def __call__(self, inputs):
         layer_type = self.__class__.__name__
         if isinstance(inputs, list):
-            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale', 'Dense']:
+            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale',
+                                                      'Dense', 'Model', 'OutputLayer']:
                 raise DLPyError('The input of {} should have only one layer.'.format(layer_type))
         else:
             inputs = [inputs]
-        self.src_layers = self.src_layers or []
-        self.src_layers = self.src_layers + inputs
+        self._assert_inputs(inputs)
+        input_layers = []
+        for input_ in inputs:
+            if input_._op.__class__.__name__ == 'Model':
+                idx_tensor = input_._op.tensor.index(input_)
+                input_layers.append(input_._op.output_layers[idx_tensor])
+            else:
+                input_layers.append(input_._op)
+        self.src_layers = input_layers
 
         # give the layer a name
         self.count_instances()
@@ -151,7 +193,21 @@ class Layer(object):
             self.src_layers = list(set(self.src_layers))
             warnings.warn('You have duplicated src_layers in Layer {} '
                           'and the duplicated layers have been removed.'.format(self.name))
-        return self
+
+        # Model can output multiple tensors
+        if layer_type == 'Model':
+            for i, input_layer in enumerate(self.input_layers):
+                for layer in self.layers:
+                    if layer.type == 'input':continue
+                    if input_layer in layer.src_layers:
+                        layer.src_layers = [self.src_layers[i]]
+
+            self._inbound_nodes = [Node(src_layer, self) for src_layer in self.src_layers]
+            self.tensor = [Tensor(output_layer) for output_layer in self.output_layers]
+        else:
+            self._inbound_nodes = Node(self.src_layers, self)
+            self.tensor = Tensor(self)  # return Tensor object
+        return self.tensor
 
     def __lt__(self, other):
         return self.depth < other.depth
@@ -216,7 +272,8 @@ class Layer(object):
         if self.type == 'input':
             return dict(name=self.name, layer=new_params)
         elif self.type == 'transconvo':
-            del new_params['outputsize']
+            if 'outputsize' in new_params:
+                del new_params['outputsize']
         return dict(name = self.name, layer = new_params,
                     srclayers = [item.name for item in self.src_layers])
 
@@ -232,14 +289,32 @@ class Layer(object):
                               self.config.get('stride', ''), self.activation,
                               self.output_size, (self.num_weights, self.num_bias)]],
                             columns=['Layer Id', 'Layer', 'Type', 'Kernel Size', 'Stride',
-                                     'Activation', 'Output Size',
-                                     'Number of Parameters'])
+                                     'Activation', 'Output Size', 'Number of Parameters'])
 
     @property
     def rnn_summary(self):
         ''' Return a DataFrame containing the layer information for rnn models'''
         return pd.DataFrame([[self.layer_id, self.name, self.type, self.activation, self.output_size]],
                             columns=['Layer Id', 'Layer', 'Type', 'Activation', 'Output Size'])
+
+    def _assert_inputs(self, inputs):
+        '''
+        Check if inputs are tensor, inputs tensor are compatible in term of shape and layer property
+
+        inputs: a list of Tensor object
+
+        '''
+        # TODO: check if input tensors are compatible with each type of the layer.
+        for input in inputs:
+            if not isinstance(input, Tensor):
+                raise ValueError('Layer {} is called with an input that isn\'t a tensor object'.format(self.name))
+
+
+def Input(n_channels=None, width=None, height=None, name=None, nominals=None, std=None, scale=None,
+          offsets=None, dropout=None, random_flip=None, random_crop=None, random_mutation=None):
+    input_layer = InputLayer(n_channels, width, height, name, nominals, std, scale, offsets,
+                             dropout, random_flip, random_crop, random_mutation)
+    return input_layer.input_tenor
 
 
 class InputLayer(Layer):
@@ -320,6 +395,9 @@ class InputLayer(Layer):
             self._output_size = 0
 
         self.color_code = get_color(self.type)
+
+        self.input_tenor = Tensor(self)
+        self.tensor = self.input_tenor
 
     @property
     def output_size(self):
@@ -1312,13 +1390,16 @@ class Detection(Layer):
         Specifies the layers directed to this layer.
     max_boxes : int, optional
         Specifies the maximum number of overall predictions allowed in the detection layer.
-    max_label_pe_image : int, optional
+    max_label_per_image : int, optional
         The maximum number of labels per image
     match_anchor_size : bool, optional
         Whether to force the predicted box match the anchor boxes in sizes for all predictions
     num_to_force_coord : int, optional
         The number of leading chunk of images in training when the algorithm forces predicted objects
         in each grid to be equal to the anchor box sizes, and located at the grid center
+    force_coord_scale: float, optional
+        The scale for location error during the training period while forcing the predicted boxes
+        to have default sizes/locations
 
     Returns
     -------
@@ -1335,7 +1416,8 @@ class Detection(Layer):
                  coord_type=None, class_number=None, grid_number=None, predictions_per_grid=None, do_sqrt=None,
                  coord_scale=None, object_scale=None, prediction_not_a_object_scale=None, class_scale=None,
                  detection_threshold=None, iou_threshold=None, random_boxes=None, src_layers=None, max_boxes=None,
-                 max_label_per_image=None, match_anchor_size=None, num_to_force_coord=None, **kwargs):
+                 max_label_per_image=None, match_anchor_size=None, num_to_force_coord=None, force_coord_scale=None,
+                 **kwargs):
 
         if not __dev__ and len(kwargs) > 0:
             raise DLPyError('**kwargs can be used only in development mode.')
@@ -1499,6 +1581,7 @@ class Reshape(Layer):
 
 class Transconvo(Layer):
     """
+    TODO:
     Transconvo layer
 
     Parameters
@@ -1834,6 +1917,7 @@ class RegionProposal(Layer):
         parameters = _unpack_config(parameters)
         # _clean_parameters(parameters)
         Layer.__init__(self, name, parameters, src_layers)
+        self.proposed_roi_num_train = proposed_roi_num_score
         self._output_size = None
         self.color_code = get_color(self.type)
 
@@ -1848,7 +1932,7 @@ class RegionProposal(Layer):
     @property
     def output_size(self):
         if self._output_size is None:
-            self._output_size = self.src_layers[0].output_size
+            self._output_size = (5, self.proposed_roi_num_train)
         return self._output_size
 
     @property

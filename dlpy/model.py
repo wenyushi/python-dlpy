@@ -287,8 +287,11 @@ class Model(Network):
         input_table = self.conn.CASTable(**input_tbl_opts)
 
         if data_specs is None and inputs is None:
-            if '_image_' in input_table.columns.tolist():
-                print('NOTE: Either dataspecs or inputs need to be non-None, therefore inputs=_image_ is used')
+            from dlpy.images import ImageTable
+            if isinstance(input_table, ImageTable):
+                inputs = input_table.running_image_column
+            elif '_image_' in input_table.columns.tolist():
+                print('NOTE: Inputs=_image_ is used')
                 inputs = '_image_'
             else:
                 raise DLPyError('either dataspecs or inputs need to be non-None')
@@ -502,9 +505,10 @@ class Model(Network):
                             **kwargs)
         return r
 
-    def plot_training_history(self, items=('Loss', 'FitError'), fig_size=(12, 5)):
+    def plot_training_history(self, items=('Loss', 'FitError'), fig_size=(12, 5), tick_frequency=1):
         '''
-        Display the training iteration history.
+        Display the training iteration history. If using in Jupyter,
+        supress return object with semicolon - plot_training_history();
 
         Parameters
         ----------
@@ -514,15 +518,29 @@ class Model(Network):
         fig_size : tuple, optional
             Specifies the size of the figure.
             Default : (12, 5)
+        tick_frequency : int, optional
+            Specifies the frequency of the ticks visable on xaxis.
+            Default : 1
+
+        Returns
+        -------
+        :class:`matplotlib.axes.Axes`
 
         '''
         items_not_in_results = [x for x in items if x not in self.training_history.columns]
         if items_not_in_results:
             raise DLPyError('Columns {} are not in results'.format(items_not_in_results))
+
         if self.training_history is not None:
-            self.training_history.plot(x='Epoch', y=list(items),
-                                       xticks=self.training_history.Epoch,
-                                       figsize=fig_size)
+            if tick_frequency > 1 and tick_frequency <= self.n_epochs:
+                x_ticks = np.array([1] + list(range(tick_frequency,
+                    len(self.training_history.Epoch) + 1, tick_frequency)))
+            else:
+                x_ticks = self.training_history.Epoch.values
+
+            return self.training_history.plot(x='Epoch', y=list(('Loss', 'FitError')),
+                                              figsize=(12, 5),
+                                              xticks=x_ticks)
         else:
             raise DLPyError('model.fit should be run before calling plot_training_history')
 
@@ -602,11 +620,15 @@ class Model(Network):
             else:
                 lo = dict(replace=True, name=layer_out)
 
+        en = True
+        if self.model_type == 'RNN':
+            en = False
+
         if use_best_weights and self.best_weights is not None:
             print('NOTE: Using the weights providing the smallest loss error.')
             res = self.score(table=input_table, model=self.model_table, init_weights=self.best_weights,
                              copy_vars=copy_vars, casout=dict(replace=True, name=valid_res_tbl),
-                             encode_name=True, text_parms=text_parms, layer_out=lo,
+                             encode_name=en, text_parms=text_parms, layer_out=lo,
                              layers=layers, gpu=gpu, mini_batch_buf_size=mini_batch_buf_size,
                              top_probs=top_probs, buffer_size=buffer_size)
         else:
@@ -615,7 +637,7 @@ class Model(Network):
             else:
                 res = self.score(table=input_table, model=self.model_table, init_weights=self.model_weights,
                                  copy_vars=copy_vars, casout=dict(replace=True, name=valid_res_tbl),
-                                 encode_name=True, text_parms=text_parms, layer_out=lo,
+                                 encode_name=en, text_parms=text_parms, layer_out=lo,
                                  layers=layers, gpu=gpu, mini_batch_buf_size=mini_batch_buf_size,
                                  buffer_size=buffer_size, top_probs=top_probs)
 
@@ -763,8 +785,6 @@ class Model(Network):
         nrof_classes = len(classes)
 
         classes_not_detected = [x for x in classes_gt if x not in classes]
-        if len([x for x in classes if x not in classes_gt]) > 0:
-            raise DLPyError('Detection data contains classes that are not in ground truth')
 
         if not isinstance(iou_thresholds, collections.Iterable):
             iou_thresholds = [iou_thresholds]
@@ -772,6 +792,9 @@ class Model(Network):
         for iou_threshold in iou_thresholds:
             results_iou = []
             for i, cls in enumerate(classes):
+                if cls not in classes_gt:
+                    print('Predictions contain the class, {}, that is not in ground truth'.format(cls))
+                    continue
                 det_bb_cls_list = []
                 [det_bb_cls_list.append(bb) for bb in det_bb_list if bb.class_type == cls]  # all of detections of the class
                 gt_bb_cls_list = []
@@ -911,10 +934,14 @@ class Model(Network):
         if layer_out is not None:
             lo = dict(replace=True, name=layer_out)
 
+        en = True
+        if self.model_type == 'RNN':
+            en = False
+
         if use_best_weights and self.best_weights is not None:
             print('NOTE: Using the weights providing the smallest loss error.')
             res = self.score(table=input_table, model=self.model_table, init_weights=self.best_weights,
-                             copy_vars=copy_vars, casout=dict(replace=True, name=valid_res_tbl), encode_name=True,
+                             copy_vars=copy_vars, casout=dict(replace=True, name=valid_res_tbl), encode_name=en,
                              text_parms=text_parms, layer_out=lo, layers=layers, gpu=gpu,
                              mini_batch_buf_size=mini_batch_buf_size, top_probs=top_probs, buffer_size=buffer_size,
                              n_threads=n_threads)
@@ -922,7 +949,7 @@ class Model(Network):
             return res
         else:
             res = self.score(table=input_table, model=self.model_table, init_weights=self.model_weights,
-                             copy_vars=copy_vars, casout=dict(replace=True, name=valid_res_tbl), encode_name=True,
+                             copy_vars=copy_vars, casout=dict(replace=True, name=valid_res_tbl), encode_name=en,
                              text_parms=text_parms, layer_out=lo, layers=layers, gpu=gpu,
                              mini_batch_buf_size=mini_batch_buf_size, top_probs=top_probs, buffer_size=buffer_size,
                              n_threads=n_threads)
