@@ -991,8 +991,8 @@ def _convert_yolo(size, box):
 
 
 def _convert_coco(size, box, resize):
-    w_ratio = float(resize) / size[0]
-    h_ratio = float(resize) / size[1]
+    w_ratio = float(resize[0]) / size[0]
+    h_ratio = float(resize[1]) / size[1]
     x_min = box[0] * w_ratio
     y_min = box[1] * h_ratio
     x_max = box[2] * w_ratio
@@ -1098,7 +1098,7 @@ def convert_txt_to_xml(path):
     os.chdir(cwd)
 
 
-def get_txt_annotation(local_path, coord_type, image_size = 416, label_files = None):
+def get_txt_annotation(local_path, coord_type, image_size = (416, 416), label_files = None):
     '''
     Parse object detection annotation files based on Pascal VOC format and save as txt files.
 
@@ -1141,7 +1141,7 @@ def get_txt_annotation(local_path, coord_type, image_size = 416, label_files = N
 
 
 def create_object_detection_table(conn, data_path, coord_type, output,
-                                  local_path=None, image_size=416):
+                                  local_path=None, image_size=(416, 416)):
     '''
     Create an object detection table
 
@@ -1178,9 +1178,10 @@ def create_object_detection_table(conn, data_path, coord_type, output,
         Linux clients with Windows CAS Server:
         data_path=\\path\to\data\path
         local_path=/path/to/data/path
-    image_size : integer, optional
+    image_size : tuple or integer, optional
         Specifies the size of images to resize.
-        Default: 416
+        If a tuple is passed, the first integer is width and the second value is height.
+        Default: (416, 416)
 
     Returns
     -------
@@ -1207,6 +1208,7 @@ def create_object_detection_table(conn, data_path, coord_type, output,
 
     if coord_type.lower() not in ['yolo', 'coco']:
         raise ValueError('coord_type, {}, is not supported'.format(coord_type))
+    image_size = _pair(image_size)
 
     # label variables, _ : category;
     yolo_var_name = ['_', '_x', '_y', '_width', '_height']
@@ -1237,8 +1239,8 @@ def create_object_detection_table(conn, data_path, coord_type, output,
         res = conn.image.processImages(table={'name': det_img_table},
                                        imagefunctions=[
                                            {'options': {'functiontype': 'RESIZE',
-                                                        'height': image_size,
-                                                        'width': image_size}}
+                                                        'height': image_size[1],
+                                                        'width': image_size[0]}}
                                        ],
                                        casout={'name': det_img_table, 'replace': True})
 
