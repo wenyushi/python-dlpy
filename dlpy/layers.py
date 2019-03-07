@@ -1874,6 +1874,10 @@ class RegionProposal(Layer):
     base_anchor_size : int, optional
         Specifies the basic anchor size in width and height (in pixels) in the original input image dimension
         Default: 16
+    coord_type : int, optional
+        Specifies the coordinates format type in the input label and detection result.
+        Valid Values: RECT, COCO, YOLO
+        Default: COCO
     do_rpn_only : Boolean, optional
         Specifies that in the model, only Region Proposal task is to be done in the model,
         not including the Fast RCNN task
@@ -1906,8 +1910,8 @@ class RegionProposal(Layer):
     can_be_last_layer = False
     number_of_instances = 0
 
-    def __init__(self, anchor_ratio, anchor_scale, name=None, act='AUTO', anchor_num_to_sample=256,
-                 base_anchor_size=16, do_rpn_only=False, max_label_per_image=200, proposed_roi_num_score=300,
+    def __init__(self, anchor_ratio, anchor_scale, name=None, act='AUTO', anchor_num_to_sample=256, base_anchor_size=16,
+                 coord_type='COCO', do_rpn_only=False, max_label_per_image=200, proposed_roi_num_score=300,
                  proposed_roi_num_train=2000, roi_train_sample_num=128, src_layers=None, **kwargs):
 
         if not __dev__ and len(kwargs) > 0:
