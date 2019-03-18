@@ -188,12 +188,12 @@ class Network(Layer):
         Convert a Sequential into a functional model and return the functional model.
 
         stop_layers : iter-of-Layer or Layer
-            stop_layers refers to the layers that stop traverse the graph.
+            stop_layers refers to the layers that stop traversing the graph.
             All of layers followed by the stop_layers are removed from the functional model.
             The argument is useful when you want to get a subset of network.
             For example:
                 Given a ResNet50 model, only generate the feature extraction network of ResNet50.
-                feature_extractor = resnet50_model.to_functional_model(stop_layers=resnet50_model.layers[-1])
+                feature_extractor = resnet50_model.to_functional_model(stop_layers=resnet50_model.layers[-2])
 
         Returns
         -------
@@ -1079,6 +1079,7 @@ class Network(Layer):
                         modelTable = self.model_table,
                         randomCrop = 'none',
                         randomFlip = 'none',
+                        randomMutation = 'none',
                         **kwargs)
 
         model_astore = self._retrieve_('astore.download',
