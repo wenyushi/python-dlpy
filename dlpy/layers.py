@@ -88,6 +88,21 @@ def get_color(name, palette='default'):
 
 
 class Tensor(object):
+    '''
+    Represent multidimensional arrays
+
+    Parameters
+    ----------
+    op : Layer
+       Specifies the Layer operation that produces this tensor as an output.
+    value : Numpy array
+       Specifies the value of the tensor.
+
+    Returns
+    -------
+    :class:`Tensor`
+
+    '''
     def __init__(self, op, value=None):
         self._op = op  # the layer that produces the tensor.
         self._value = value
@@ -95,7 +110,7 @@ class Tensor(object):
     @property
     def shape(self):
         # TODO: check shape
-        NotImplemented
+        raise NotImplementedError
 
 
 class Node(object):
@@ -299,12 +314,12 @@ class Layer(object):
 
     def _assert_inputs(self, inputs):
         '''
-        Check if inputs are tensor, inputs tensor are compatible in term of shape and layer property
+        Inspect the type of inputs and check if inputs tensors match up to the layer.
 
         inputs: a list of Tensor object
 
         '''
-        # TODO: check if input tensors are compatible with each type of the layer.
+        # TODO: check if inputs tensors match up to the layer.
         for input in inputs:
             if not isinstance(input, Tensor):
                 raise ValueError('Layer {} is called with an input that isn\'t a tensor object'.format(self.name))
@@ -312,6 +327,7 @@ class Layer(object):
 
 def Input(n_channels=None, width=None, height=None, name=None, nominals=None, std=None, scale=None,
           offsets=None, dropout=None, random_flip=None, random_crop=None, random_mutation=None):
+    # used to instantiate a tensor
     input_layer = InputLayer(n_channels, width, height, name, nominals, std, scale, offsets,
                              dropout, random_flip, random_crop, random_mutation)
     return input_layer.input_tenor
@@ -1579,7 +1595,7 @@ class Reshape(Layer):
         return 0
 
 
-class Transconvo(Layer):
+class Conv2DTranspose(Layer):
     """
     TODO:
     Transconvo layer
@@ -2117,3 +2133,7 @@ def _unpack_config(config):
     out.update(new_kwargs)
     # out.update(kwargs)
     return out
+
+
+# Aliases
+Transconvo = Conv2DTranspose
