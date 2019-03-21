@@ -42,7 +42,7 @@ class TestNetwork(tm.TestCase):
         swat.options.cas.print_messages = False
         swat.options.interactive_mode = False
 
-        cls.s = swat.CAS('dlgrd009', 13315)
+        cls.s = swat.CAS()
         cls.server_type = tm.get_cas_host_type(cls.s)
 
         if cls.server_type.startswith("lin") or cls.server_type.startswith("osx"):
@@ -136,7 +136,7 @@ class TestNetwork(tm.TestCase):
         self.assertTrue(model1.count_params() == 12682)
 
     def test_unet(self):
-        inputs = InputLayer(3, 512, 512, scale = 1.0 / 255)
+        inputs = Input(3, 512, 512, scale = 1.0 / 255)
         conv1 = Conv2d(8, 3, act = 'relu')(inputs)
         conv1 = Conv2d(8, 3, act = 'relu')(conv1)
         pool1 = Pooling(2)(conv1)
@@ -151,18 +151,18 @@ class TestNetwork(tm.TestCase):
         # 64
         conv4 = Conv2d(64, 3, act = 'relu')(pool3)  # 64
 
-        tconv1 = Transconvo(32, 3, stride = 2, padding = 1, output_size = (128, 128, 32))(conv4)  # 128
-        merge1 = Concat(src_layers = [conv3, tconv1])
+        tconv1 = Conv2DTranspose(32, 3, stride = 2, padding = 1, output_size = (128, 128, 32))(conv4)  # 128
+        merge1 = Concat()([conv3, tconv1])
         conv5 = Conv2d(32, 3, act = 'relu')(merge1)
         conv5 = Conv2d(32, 3, act = 'relu')(conv5)
 
-        tconv2 = Transconvo(32, 3, stride = 2, padding = 1, output_size = (256, 256, 32))(conv5)  # 256
-        merge2 = Concat(src_layers = [conv2, tconv2])
+        tconv2 = Conv2DTranspose(32, 3, stride = 2, padding = 1, output_size = (256, 256, 32))(conv5)  # 256
+        merge2 = Concat()([conv2, tconv2])
         conv6 = Conv2d(16, 3, act = 'relu')(merge2)
         conv6 = Conv2d(16, 3, act = 'relu')(conv6)
 
-        tconv3 = Transconvo(32, stride = 2, padding = 1, output_size = (512, 512, 32))(conv6)  # 512
-        merge3 = Concat(src_layers = [conv1, tconv3])
+        tconv3 = Conv2DTranspose(32, stride = 2, padding = 1, output_size = (512, 512, 32))(conv6)  # 512
+        merge3 = Concat()([conv1, tconv3])
         conv7 = Conv2d(8, 3, act = 'relu')(merge3)
         conv7 = Conv2d(8, 3, act = 'relu')(conv7)
 
@@ -174,8 +174,8 @@ class TestNetwork(tm.TestCase):
         model.print_summary()
 
     def test_network_transpose_conv(self):
-        inputs = InputLayer(3, 128, 64, scale = 0.004, name = 'input1')
-        tconv1 = Transconvo(32, height = 5, width = 3, stride = 2, padding_height = 2,
+        inputs = Input(3, 128, 64, scale = 0.004, name = 'input1')
+        tconv1 = Conv2DTranspose(32, height = 5, width = 3, stride = 2, padding_height = 2,
                             padding_width = 1, output_size = (256, 128, 32), name = 'trans1')(inputs)
         seg1 = Segmentation(name = 'seg1')(tconv1)
         model = Model(self.s, inputs = inputs, outputs = seg1)
@@ -204,15 +204,15 @@ class TestNetwork(tm.TestCase):
         def res_block(ip, nf = 64):
             x = conv_block(ip, nf, 3, 1)
             x = conv_block(x, nf, 3, 1, act = False)
-            return Concat(src_layers = [x, ip])
+            return Concat()([x, ip])
 
         def deconv_block(x, filters, size, shape, stride = 2):
-            x = Transconvo(filters, size, size, act = 'identity', padding=1, include_bias = False, stride = stride,
-                           output_size = shape)(x)
+            x = Conv2DTranspose(filters, size, size, act = 'identity', padding=1, include_bias = False, stride = stride,
+                                output_size = shape)(x)
             x = BN(act = 'relu')(x)
             return x
 
-        inp = InputLayer(1, 32, 32, scale = 1.0 / 255, name = 'InputLayer_1')
+        inp = Input(1, 32, 32, scale = 1.0 / 255, name = 'InputLayer_1')
         x = conv_block(inp, 64, 9, 1)
         for i in range(4): x = res_block(x)
         x = deconv_block(x, 64, 3, (64, 64, 64))
@@ -462,6 +462,15 @@ class TestNetwork(tm.TestCase):
         func_model_keypoints = Model(self.s, inp, out)
         func_model_keypoints.compile()
         func_model_keypoints.print_summary()
+
+    def test_from_model(self):
+        from dlpy.applications import ResNet18_Caffe, VGG11
+        vgg11 = VGG11(self.s)
+        backbone1 = vgg11.to_functional_model(vgg11.layers[-2])
+        self.assertEqual(backbone1.layers[-1].__class__.__name__, 'Dense')
+        model_resnet18 = ResNet18_Caffe(self.s, n_classes = 6, random_crop = 'none', width = 400, height = 400)
+        backbone2 = model_resnet18.to_functional_model(model_resnet18.layers[-3])
+        self.assertEqual(backbone2.layers[-1].__class__.__name__, 'BN')
 
     @classmethod
     def tearDownClass(cls):
