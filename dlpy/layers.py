@@ -185,7 +185,7 @@ class Layer(object):
         layer_type = self.__class__.__name__
         if isinstance(inputs, list):
             if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale',
-                                                      'Dense', 'Model', 'OutputLayer']:
+                                                      'Dense', 'Model', 'OutputLayer', 'ROIPooling', 'FastRCNN']:
                 raise DLPyError('The input of {} should have only one layer.'.format(layer_type))
         else:
             inputs = [inputs]
@@ -1923,7 +1923,7 @@ class RegionProposal(Layer):
     type = 'regionproposal'
     type_label = 'RegionProposal'
     type_desc = 'Region Proposal layer'
-    can_be_last_layer = False
+    can_be_last_layer = True
     number_of_instances = 0
 
     def __init__(self, anchor_ratio, anchor_scale, name=None, act='AUTO', anchor_num_to_sample=256, base_anchor_size=16,
@@ -2067,7 +2067,7 @@ class FastRCNN(Layer):
     type = 'fastrcnn'
     type_label = 'FastRCNN'
     type_desc = 'Fast RCNN layer'
-    can_be_last_layer = False
+    can_be_last_layer = True
     number_of_instances = 0
 
     def __init__(self, name=None, act='AUTO', class_number=20, detection_threshold=0.5, max_label_per_image=200,

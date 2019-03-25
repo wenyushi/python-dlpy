@@ -27,7 +27,7 @@ from .caffe_models import (model_vgg16, model_vgg19, model_resnet50,
                            model_resnet101, model_resnet152)
 from .keras_models import model_inceptionv3
 from .layers import (Input, InputLayer, Conv2d, Pooling, Dense, BN, OutputLayer, Detection, Concat, Reshape, Recurrent,
-                     Conv2DTranspose, Segmentation)
+                     Conv2DTranspose, Segmentation, RegionProposal, ROIPooling, FastRCNN)
 from .model import Model
 from .utils import random_name, DLPyError
 
@@ -4165,3 +4165,61 @@ def Nest_Net(conn, n_channels=1, width=512, height=512, scale=1.0 / 255, n_class
     model.compile()
 
     return model
+
+
+def Faster_RCNN(conn, n_channels=3, width=1000, height=496, scale=1,
+                offsets=[102.9801,115.9465,122.7717], random_mutation = 'none',
+                n_classes=20, anchor_num_to_sample = 256, anchor_scale = [8, 16, 32], anchor_ratio = [0.5, 1, 2],
+                base_anchor_size = 16, coord_type = 'coco', max_label_per_image = 200, proposed_roi_num_train = 2000,
+                proposed_roi_num_score = 300, roi_train_sample_num = 128,
+                nms_iou_threshold = 0.3, detection_threshold = 0.5, max_objec_num = 50):
+    num_anchors = len(anchor_ratio) * len(anchor_scale)
+    inp = Input(n_channels = n_channels, width = width, height = height, scale = scale, offsets = offsets,
+                random_mutation = random_mutation)
+
+    conv1_1 = Conv2d(n_filters = 64, width = 3, height = 3, stride = 1, name='conv1_1')(inp)
+    conv1_2 = Conv2d(n_filters = 64, width = 3, height = 3, stride = 1, name='conv1_2')(conv1_1)
+    pool1 = Pooling(width = 2, height = 2, stride = 2, pool = 'max', name='pool1')(conv1_2)
+
+    conv2_1 = Conv2d(n_filters = 128, width = 3, height = 3, stride = 1, name = 'conv2_1')(pool1)
+    conv2_2 = Conv2d(n_filters = 128, width = 3, height = 3, stride = 1, name = 'conv2_2')(conv2_1)
+    pool2 = Pooling(width = 2, height = 2, stride = 2, pool = 'max')(conv2_2)
+
+    conv3_1 = Conv2d(n_filters = 256, width = 3, height = 3, stride = 1, name = 'conv3_1')(pool2)
+    conv3_2 = Conv2d(n_filters = 256, width = 3, height = 3, stride = 1, name = 'conv3_2')(conv3_1)
+    conv3_3 = Conv2d(n_filters = 256, width = 3, height = 3, stride = 1, name = 'conv3_3')(conv3_2)
+    pool3 = Pooling(width = 2, height = 2, stride = 2, pool = 'max')(conv3_3)
+
+    conv4_1 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv4_1')(pool3)
+    conv4_2 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv4_2')(conv4_1)
+    conv4_3 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv4_3')(conv4_2)
+    pool4 = Pooling(width = 2, height = 2, stride = 2, pool = 'max')(conv4_3)
+
+    conv5_1 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv5_1')(pool4)
+    conv5_2 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv5_2')(conv5_1)
+    conv5_3 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv5_3')(conv5_2)
+
+    rpn_conv = Conv2d(width = 3, n_filters = 512, name = 'rpn_conv_3x3')(conv5_3)
+    rpn_score = Conv2d(act = 'identity', width = 1, n_filters = ((n_classes + 1 + 4) * num_anchors),
+                       name = 'rpn_score')(rpn_conv)
+
+    rp1 = RegionProposal(max_label_per_image = max_label_per_image, base_anchor_size = base_anchor_size,
+                         coord_type = coord_type, name = 'rois', anchor_num_to_sample = anchor_num_to_sample,
+                         anchor_scale = anchor_scale, anchor_ratio = anchor_ratio,
+                         proposed_roi_num_train = proposed_roi_num_train, proposed_roi_num_score = proposed_roi_num_score,
+                         roi_train_sample_num = roi_train_sample_num
+                         )(rpn_score)
+    roipool1 = ROIPooling(output_height=7, output_width=7, spatial_scale=conv5_3._op.output_size[0]/width,
+                          name = 'pool5')([conv5_3 + rp1])
+
+    fc6 = Dense(n = 4096, act = 'relu', name = 'fc6')(roipool1)
+    fc7 = Dense(n = 4096, act = 'relu', name = 'fc7')(fc6)
+    cls1 = Dense(n = n_classes+1, act = 'identity', name = 'cls_score')(fc7)
+    reg1 = Dense(n = (n_classes+1)*4, act = 'identity', name = 'bbox_pred')(fc7)
+    fr1 = FastRCNN(nms_iou_threshold = nms_iou_threshold, max_label_per_image = max_label_per_image,
+                   max_objec_num = max_objec_num,  detection_threshold = detection_threshold,
+                   class_number = n_classes, name = 'fastrcnn')([cls1, reg1, rp1])
+    faster_rcnn = Model(conn, inp, fr1)
+    faster_rcnn.compile()
+    return faster_rcnn
+
