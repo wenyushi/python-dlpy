@@ -498,7 +498,7 @@ class TestNetwork(tm.TestCase):
         triplet_model.compile()
         triplet_model.print_summary()
         self.assertEqual(len(triplet_model.layers), 31)
-        triplet_model.share_weights({'Convo.1_1': ['Convo.1_2', 'Convo.1_3']})
+        # triplet_model.share_weights({'Convo.1_1': ['Convo.1_2', 'Convo.1_3']})
         triplet_model.compile()
 
     @classmethod

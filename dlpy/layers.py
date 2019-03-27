@@ -2115,16 +2115,6 @@ class FastRCNN(Layer):
         return 0
 
 
-def _clean_input_parameters(parameters):
-    del parameters['self']
-    del parameters['name']
-
-
-def _clean_parameters(parameters):
-    del parameters['src_layers']
-    _clean_input_parameters(parameters)
-
-
 class CLoss(Layer):
     type = 'closs'
     type_label = 'Closs'
@@ -2162,6 +2152,16 @@ class CLoss(Layer):
     @property
     def num_bias(self):
         return 0
+
+
+def _clean_input_parameters(parameters):
+    del parameters['self']
+    del parameters['name']
+
+
+def _clean_parameters(parameters):
+    del parameters['src_layers']
+    _clean_input_parameters(parameters)
 
 
 def _clean_input_parameters(parameters):
