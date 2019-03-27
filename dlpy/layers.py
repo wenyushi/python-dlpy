@@ -25,6 +25,7 @@ from dlpy.utils import DLPyError, _pair, _triple, parameter_2d
 from . import __dev__
 import warnings
 import collections
+from copy import deepcopy
 
 PALETTES = dict(
     original={
@@ -160,6 +161,7 @@ class Layer(object):
     can_be_last_layer = False
     number_of_instances = 0
     layer_id = None
+    shared_weights = None
 
     def __init__(self, name=None, config=None, src_layers=None):
         self.name = name
@@ -184,11 +186,21 @@ class Layer(object):
     def __call__(self, inputs):
         layer_type = self.__class__.__name__
         if isinstance(inputs, list):
-            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale',
+            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale', 'CLoss',
                                                       'Dense', 'Model', 'OutputLayer', 'ROIPooling', 'FastRCNN']:
                 raise DLPyError('The input of {} should have only one layer.'.format(layer_type))
         else:
             inputs = [inputs]
+        if layer_type == 'Model':
+            copied_model = deepcopy(self)
+            # update name
+            if copied_model.number_of_instances != 0:
+                for layer in copied_model.layers:
+                    layer.name = layer.name + '_' + '{}'.format(copied_model.number_of_instances)
+            # share weights
+            # for layer in copied_model.layers:
+            #     layer.from_sub_network = self
+            self = copied_model
         self._assert_inputs(inputs)
         input_layers = []
         for input_ in inputs:
@@ -211,6 +223,7 @@ class Layer(object):
 
         # Model can output multiple tensors
         if layer_type == 'Model':
+            # hook input tensor layers with the layers connected to the input layer of the model
             for i, input_layer in enumerate(self.input_layers):
                 for layer in self.layers:
                     if layer.type == 'input':continue
@@ -289,7 +302,7 @@ class Layer(object):
         elif self.type == 'transconvo':
             if 'outputsize' in new_params:
                 del new_params['outputsize']
-        return dict(name = self.name, layer = new_params,
+        return dict(name = self.name, layer = new_params, sharedweights = self.shared_weights,
                     srclayers = [item.name for item in self.src_layers])
 
     @property
@@ -2094,7 +2107,56 @@ class FastRCNN(Layer):
     @property
     def output_size(self):
         if self._output_size is None:
-            self._output_size = self._output_size = self.src_layers[0].output_size
+            self._output_size = self.src_layers[0].output_size
+        return self._output_size
+
+    @property
+    def num_bias(self):
+        return 0
+
+
+def _clean_input_parameters(parameters):
+    del parameters['self']
+    del parameters['name']
+
+
+def _clean_parameters(parameters):
+    del parameters['src_layers']
+    _clean_input_parameters(parameters)
+
+
+class CLoss(Layer):
+    type = 'closs'
+    type_label = 'Closs'
+    type_desc = 'Closs layer'
+    can_be_last_layer = True
+    number_of_instances = 0
+
+    def __init__(self, name=None, distance="L2", margin=2, src_layers=None, **kwargs):
+
+        if not __dev__ and len(kwargs) > 0:
+            raise DLPyError('**kwargs can be used only in development mode.')
+
+        parameters = locals()
+        parameters = _unpack_config(parameters)
+        # _clean_parameters(parameters)
+        Layer.__init__(self, name, parameters, src_layers)
+        self._output_size = None
+        self.color_code = get_color(self.type)
+
+    @property
+    def kernel_size(self):
+        return None
+
+    @property
+    def num_weights(self):
+        return 0
+
+    @property
+    def output_size(self):
+        # TODO
+        if self._output_size is None:
+            self._output_size = self.src_layers[0].output_size
         return self._output_size
 
     @property

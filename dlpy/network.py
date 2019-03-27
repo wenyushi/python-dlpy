@@ -62,7 +62,8 @@ class Network(Layer):
     can_be_last_layer = True
     number_of_instances = 0
     src_layers = []
-    name = 'model' + str(number_of_instances)
+    name = None
+    sub_networks = []
 
     def __init__(self, conn, inputs=None, outputs=None, model_table=None, model_weights=None):
         if model_table is not None and any(i is not None for i in [inputs, outputs]):
@@ -71,6 +72,7 @@ class Network(Layer):
                             '1. model_table = "your_model_table"; inputs = None; outputs = None.\n'
                             '2. model_table = None; inputs = input_layer(s); outputs = output_layer.'
                             )
+        name = 'model' + str(self.number_of_instances)
         self._init_model(conn, model_table, model_weights)
         if all(i is None for i in [inputs, outputs, model_table]):
             return
@@ -105,6 +107,7 @@ class Network(Layer):
         self.best_weights = None
         self.target = None
         self.num_params = None
+        self.count_instances()
 
     def _map_graph_network(self, inputs, outputs):
         '''
@@ -200,22 +203,27 @@ class Network(Layer):
         :class:`Model`
 
         '''
+        copied_model = deepcopy(self)  # deepcopy the sequential model and don't touch the original one
         stop_layers = stop_layers or []
-        if not isinstance(stop_layers, collections.Iterable):
-            stop_layers = [stop_layers]
         input_tensors = []
         output_tensors = []
-        for idx, layer in enumerate(self.layers):
+
+        if not isinstance(stop_layers, collections.Iterable):
+            stop_layers = [stop_layers]
+        index_l = [self.layers.index(x) for x in stop_layers]
+        stop_layers = [copied_model.layers[i] for i in index_l]
+
+        for idx, layer in enumerate(copied_model.layers):
             layer_type = layer.__class__.__name__
             if layer_type == 'InputLayer':
                 input_tensors.append(layer.tensor)
                 continue
             # find layer's outbound layer
-            for outbound_layer in self.layers[idx:]:
+            for outbound_layer in copied_model.layers[idx:]:
                 if outbound_layer.__class__.__name__ == 'InputLayer':
                     continue
                 # if all source layers of outbound_layer are visited(all in self.layers[:idx])
-                if all(src_layer in self.layers[:idx] for src_layer in outbound_layer.src_layers):
+                if all(src_layer in copied_model.layers[:idx] for src_layer in outbound_layer.src_layers):
                     # skip if stop_layers are visited and add its src_layers's output tensors
                     if outbound_layer in stop_layers:
                         for src_layer in outbound_layer.src_layers:
@@ -245,6 +253,10 @@ class Network(Layer):
     def _retrieve_(self, _name_, message_level='error', **kwargs):
         ''' Call a CAS action '''
         return self.conn.retrieve(_name_, _messagelevel=message_level, **kwargs)
+
+    @classmethod
+    def count_instances(cls):
+        cls.number_of_instances += 1
 
     @classmethod
     def from_table(cls, input_model_table, display_note = True, output_model_table = None):
@@ -1061,6 +1073,28 @@ class Network(Layer):
 
         if not flag:
             self._retrieve_('table.dropcaslib', caslib=cas_lib_name)
+
+    def share_weights(self, layers):
+        """
+        TODO: Comment
+        Share weights
+
+        Parameters
+        ----------
+        layers : layers dict or iter-of-dict
+
+
+        """
+        if not isinstance(layers, list):
+            layers = [layers]
+        layers_name = [l.name for l in self.layers]
+        for layer in layers:
+            for anchor, shares in layer.items():
+                if isinstance(shares, str):
+                    shares = [shares]
+                for share in shares:
+                    idx_share = layers_name.index(share)
+                    self.layers[idx_share].shared_weights = anchor
 
     def save_to_astore(self, path = None, **kwargs):
         """
