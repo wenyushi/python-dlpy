@@ -22,7 +22,7 @@ import json
 import os
 
 from dlpy.layers import InputLayer, Conv2d, Pooling, Dense, Recurrent, BN, Res, Proj, OutputLayer, \
-                        Keypoints, Detection, Scale, Reshape, Transconvo
+                        Keypoints, Detection, Scale, Reshape, Transconvo, GroupConv2d
 from dlpy.blocks import ResBlock, ResBlockBN, ResBlock_Caffe, DenseNetBlock, Bidirectional
 from dlpy.utils import DLPyError, get_mapping_dict
 from dlpy import __dev__
@@ -322,6 +322,10 @@ class TestLayers(unittest.TestCase):
 
         trans3 = Transconvo(n_filters = 30, padding_width = 3, stride = 10, output_padding_width = 2)
         self.assertTrue(trans3.output_padding == (0, 2))
+
+    def test_group_conv1(self):
+        group_conv1 = GroupConv2d(n_filters=30, n_groups=3, stride_horizontal = 2)
+        self.assertTrue(group_conv1.config['n_groups'] == 3)
 
     def test_mapping_dict(self):
         mapping = get_mapping_dict()
