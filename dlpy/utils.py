@@ -1376,6 +1376,7 @@ def create_object_detection_table(conn, data_path, coord_type, output,
 
 def plot_helper(conn, image_table, num_plot, n_col, fig_size=None):
     with sw.option_context(print_messages = False):
+        num_plot = min(conn.numrows(image_table).numrows, num_plot)
         fetch_images_data = conn.image.fetchImages(imageTable = {'name': image_table},
                                                    to = num_plot,
                                                    fetchImagesVars = ['_image_', '_path_'])
@@ -1471,42 +1472,69 @@ def display_object_detections(conn, table, coord_type, max_objects=10, num_plot=
         conn.table.droptable(det_label_image_table)
 
 
-def display_segmentation(conn, table, num_plot, n_col=2, fig_size=None):
+def display_segmentation2(conn, table, annotation_parameters, num_plot, input_background = 0, n_col = 2,
+                          fig_size = None):
     conn.retrieve('loadactionset', _messagelevel = 'error', actionset = 'image')
 
     label_char_cols = [x for x in list(conn.CASTable(table).columns) if 'PredName' in x]
-    label_num_cols = [x + 'num' for x in label_char_cols]
+    masks_cols = []
     annotated_img = random_name('Annotated', 6)
-    convert_to_numeric_code = ""
-    for x, y in zip(label_char_cols, label_num_cols):
-        convert_to_numeric_code += "length {1} 2; {1} = {0};".format(x, y)
+    annotations = []
+    rename_var = 'raw_image'
+
+    # select number of images to show
     with sw.option_context(print_messages = False):
         image_summary = conn.image.summarizeimages(table).Summary
     width = image_summary.loc[0, 'minWidth']
     height = image_summary.loc[0, 'minHeight']
-    rename_var = 'raw_image'
+
+    convert_to_numeric_code = ""
+    for i, an_param in enumerate(annotation_parameters):
+        mask_cols = [x + 'num{}'.format(i) for x in label_char_cols]
+        class_name = an_param['class']
+        for x, y in zip(label_char_cols, mask_cols):
+            convert_to_numeric_code += "length {1} 2; if {0} = {2} then {1} = {2}; else {1} = {3};".format(x, y,
+                                                                                                           class_name,
+                                                                                                           input_background)
+        masks_cols.append(mask_cols)
 
     with sw.option_context(print_messages = False):
-        conn.partition(table = dict(name = table, computedvars = label_num_cols,
+        flatten_masks_cols = [item for sublist in masks_cols for item in sublist]
+        conn.partition(table = dict(name = table, computedvars = flatten_masks_cols,
                                     computedvarsprogram = convert_to_numeric_code),
                        casout = dict(name = annotated_img, replace = 1))
         conn.altertable(table = annotated_img, columns = [dict(name = '_image_', rename = rename_var)])
-    conn.condenseimages(table = annotated_img, height = height, width = width,
-                        casout = dict(name = annotated_img, replace = 1),
-                        copyvars = rename_var, inputs = label_num_cols, numberofchannels = 'GRAY_SCALE_IMAGE')
-    # walk around to rename the decode meta data
-    conn.altertable(annotated_img, columns = [dict(name = '_dimension_', rename = '_dimension_0'),
-                                              dict(name = '_resolution_', rename = '_resolution_0'),
-                                              dict(name = '_imageFormat_', rename = '_imageFormat_0')])
-    conn.annotateimages(images = dict(table = annotated_img, image = rename_var),
-                        casout = dict(name = annotated_img, replace = 1),
-                        annotations = [dict(annotationparameters = dict(annotationType = 'segmentation',
-                                                                        image = '_image_',
-                                                                        dimension = '_dimension_0',
-                                                                        resolution = '_resolution_0',
-                                                                        imageFormat = '_imageFormat_0',
-                                                                        colorMap = 'autumn', transparency = 80,
-                                                                        inputbackground = 0))])
+    temp_vars = [rename_var]
+    for i, cols in enumerate(masks_cols):
+        renamed_dimension = '_dimension_{}'.format(i)
+        renamed_resolution = '_resolution_{}'.format(i)
+        renamed_image_format = '_imageFormat_{}'.format(i)
+        renamed_mask = 'mask_{}'.format(i)
+        color = annotation_parameters[i]['color']
+        transparency = annotation_parameters[i]['transparency']
+        annotation = dict(annotationparameters = dict(annotationType = 'segmentation',
+                                                      image = renamed_mask,
+                                                      dimension = renamed_dimension,
+                                                      resolution = renamed_resolution,
+                                                      imageFormat = renamed_image_format,
+                                                      colorMap = color, transparency = transparency,
+                                                      inputbackground = input_background))
+        copy_vars = [item for sublist in masks_cols[i + 1:] for item in sublist] + temp_vars
+        conn.condenseimages(table = annotated_img, height = height, width = width,
+                            casout = dict(name = annotated_img, replace = 1),
+                            copyvars = copy_vars, inputs = cols, numberofchannels = 'GRAY_SCALE_IMAGE')
+        # walk around to rename the decode meta data
+        conn.altertable(annotated_img, columns = [dict(name = '_image_', rename = renamed_mask),
+                                                  dict(name = '_dimension_', rename = renamed_dimension),
+                                                  dict(name = '_resolution_', rename = renamed_resolution),
+                                                  dict(name = '_imageFormat_', rename = renamed_image_format)])
+        annotations.append(annotation)
+        # update copy vars
+        temp_vars += [renamed_mask, renamed_dimension, renamed_resolution, renamed_image_format]
+    with sw.option_context(print_messages = False):
+        conn.annotateimages(images = dict(table = annotated_img, image = rename_var),
+                            casout = dict(name = annotated_img, replace = 1),
+                            annotations = annotations)
     plot_helper(conn, annotated_img, num_plot, n_col, fig_size)
     with sw.option_context(print_messages=False):
         conn.table.droptable(annotated_img)
