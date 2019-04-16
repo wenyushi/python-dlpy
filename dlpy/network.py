@@ -2015,7 +2015,7 @@ def extract_groupconv_layer(layer_table):
 
     '''
     num_keys = ['n_filters', 'width', 'height', 'stride', 'std', 'mean',
-                'init_bias', 'dropout', 'truncation_factor', 'init_b', 'trunc_fact', 'ngroups']
+                'init_bias', 'dropout', 'truncation_factor', 'init_b', 'trunc_fact', 'n_groups']
     str_keys = ['act', 'init']
 
     grpconv_layer_config = dict()

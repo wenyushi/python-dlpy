@@ -1,6 +1,3 @@
 [
-  "dlpy/tests/test_imagetable.py::TestImageTable::test_as_patches",
-  "dlpy/tests/test_imagetable.py::TestImageTable::test_crop",
-  "dlpy/tests/test_imagetable.py::TestImageTable::test_load_images",
-  "dlpy/tests/test_imagetable.py::TestImageTable::test_resize"
+  "dlpy/tests/test_model.py::TestModel::test_mobilenet"
 ]

@@ -48,7 +48,6 @@ class Model(Network):
     valid_tbl = None
     score_message_level = 'note'
 
-
     def change_labels(self, label_file, id_column, label_column):
         '''
         Overrides the labels already in the model
@@ -723,9 +722,6 @@ class Model(Network):
         """
         if coord_type.lower() not in ['yolo', 'coco']:
             raise ValueError('coord_type, {}, is not supported'.format(coord_type))
-
-        self.conn.update(table=dict(name = self.model_name, where='_DLChrVal_ eq "iouThreshold"'),
-                         set=[{'var':'_DLNumVal_', 'value':'0.5'}])
 
         if detection_data is not None:
             input_tbl_opts = input_table_check(detection_data)

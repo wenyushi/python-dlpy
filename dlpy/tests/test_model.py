@@ -1116,8 +1116,7 @@ class TestModel(unittest.TestCase):
         
         with self.assertRaises(RuntimeError):
             resulttbl3 = model1.forecast(testtbl, horizon=3)
-        
-        
+
     def test_imagescaler1(self):
         # test import model with imagescaler
         try:

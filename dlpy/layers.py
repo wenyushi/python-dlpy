@@ -616,7 +616,8 @@ class GroupConv2d(Conv2d):
                                           padding_height = padding_height, act=act, fcmp_act=fcmp_act, init=init,
                                           std=std, mean=mean, truncation_factor=truncation_factor, init_bias=init_bias,
                                           dropout=dropout, include_bias=include_bias, src_layers=src_layers, **kwargs)
-        self.config['n_groups'] = n_groups
+        self.n_groups = n_groups
+        self.config['nGroups'] = n_groups
 
     @property
     def output_size(self):
@@ -649,7 +650,7 @@ class GroupConv2d(Conv2d):
     def num_weights(self):
         if self._num_weights is None:
             self._num_weights = int(self.config['width'] * self.config['height'] * self.config['n_filters']
-                                    * self.src_layers[0].output_size[2] / self.config['n_groups'])
+                                    * self.src_layers[0].output_size[2] / self.config['nGroups'])
         return self._num_weights
 
     @property

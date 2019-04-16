@@ -27,7 +27,7 @@ from .caffe_models import (model_vgg16, model_vgg19, model_resnet50,
                            model_resnet101, model_resnet152)
 from .keras_models import model_inceptionv3
 from .layers import (Input, InputLayer, Conv2d, Pooling, Dense, BN, OutputLayer, Detection, Concat, Reshape, Recurrent,
-                     Conv2DTranspose, Segmentation, RegionProposal, ROIPooling, FastRCNN)
+                     Conv2DTranspose, Segmentation, RegionProposal, ROIPooling, FastRCNN, GroupConv2d, ChannelShuffle)
 from .model import Model
 from .utils import random_name, DLPyError
 
@@ -2052,6 +2052,152 @@ def ResNet_Wide(conn, model_table='WIDE_RESNET', batch_norm_first=True, number_o
     model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
 
     model.add(OutputLayer(act='softmax', n=n_classes))
+
+    return model
+
+
+def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, width=224, height=224, scale=1,
+                random_flip='none', random_crop='none', random_mutation='none',
+                offsets=(103.939, 116.779, 123.68), alpha=1, depth_multiplier=1):
+    def _conv_block(inputs, filters, alpha, kernel = 3, stride = 1):
+        """Adds an initial convolution layer (with batch normalization and relu6).
+        # Arguments
+            inputs: Input tensor of shape `(rows, cols, 3)`
+                (with `channels_last` data format) or
+                (3, rows, cols) (with `channels_first` data format).
+                It should have exactly 3 inputs channels,
+                and width and height should be no smaller than 32.
+                E.g. `(224, 224, 3)` would be one valid value.
+            filters: Integer, the dimensionality of the output space
+                (i.e. the number of output filters in the convolution).
+            alpha: controls the width of the network.
+                - If `alpha` < 1.0, proportionally decreases the number
+                    of filters in each layer.
+                - If `alpha` > 1.0, proportionally increases the number
+                    of filters in each layer.
+                - If `alpha` = 1, default number of filters from the paper
+                     are used at each layer.
+            kernel: An integer or tuple/list of 2 integers, specifying the
+                width and height of the 2D convolution window.
+                Can be a single integer to specify the same value for
+                all spatial dimensions.
+            strides: An integer or tuple/list of 2 integers,
+                specifying the strides of the convolution
+                along the width and height.
+                Can be a single integer to specify the same value for
+                all spatial dimensions.
+                Specifying any stride value != 1 is incompatible with specifying
+                any `dilation_rate` value != 1.
+        # Input shape
+            4D tensor with shape:
+            `(samples, channels, rows, cols)` if data_format='channels_first'
+            or 4D tensor with shape:
+            `(samples, rows, cols, channels)` if data_format='channels_last'.
+        # Output shape
+            4D tensor with shape:
+            `(samples, filters, new_rows, new_cols)`
+            if data_format='channels_first'
+            or 4D tensor with shape:
+            `(samples, new_rows, new_cols, filters)`
+            if data_format='channels_last'.
+            `rows` and `cols` values might have changed due to stride.
+        # Returns
+            Output tensor of block.
+        """
+        filters = int(filters * alpha)
+        x = Conv2d(filters, kernel, include_bias = False, stride = stride, name = 'conv1')(inputs)
+        x = BN(name = 'conv1_bn', act='relu')(x)
+        return x, filters
+
+    def _depthwise_conv_block(inputs, n_groups, pointwise_conv_filters, alpha,
+                              depth_multiplier = 1, stride = 1, block_id = 1):
+        """Adds a depthwise convolution block.
+        A depthwise convolution block consists of a depthwise conv,
+        batch normalization, relu6, pointwise convolution,
+        batch normalization and relu6 activation.
+        # Arguments
+            inputs: Input tensor of shape `(rows, cols, channels)`
+                (with `channels_last` data format) or
+                (channels, rows, cols) (with `channels_first` data format).
+            pointwise_conv_filters: Integer, the dimensionality of the output space
+                (i.e. the number of output filters in the pointwise convolution).
+            alpha: controls the width of the network.
+                - If `alpha` < 1.0, proportionally decreases the number
+                    of filters in each layer.
+                - If `alpha` > 1.0, proportionally increases the number
+                    of filters in each layer.
+                - If `alpha` = 1, default number of filters from the paper
+                     are used at each layer.
+            depth_multiplier: The number of depthwise convolution output channels
+                for each input channel.
+                The total number of depthwise convolution output
+                channels will be equal to `filters_in * depth_multiplier`.
+            strides: An integer or tuple/list of 2 integers,
+                specifying the strides of the convolution
+                along the width and height.
+                Can be a single integer to specify the same value for
+                all spatial dimensions.
+                Specifying any stride value != 1 is incompatible with specifying
+                any `dilation_rate` value != 1.
+            block_id: Integer, a unique identification designating
+                the block number.
+        # Input shape
+            4D tensor with shape:
+            `(batch, channels, rows, cols)` if data_format='channels_first'
+            or 4D tensor with shape:
+            `(batch, rows, cols, channels)` if data_format='channels_last'.
+        # Output shape
+            4D tensor with shape:
+            `(batch, filters, new_rows, new_cols)`
+            if data_format='channels_first'
+            or 4D tensor with shape:
+            `(batch, new_rows, new_cols, filters)`
+            if data_format='channels_last'.
+            `rows` and `cols` values might have changed due to stride.
+        # Returns
+            Output tensor of block.
+        """
+        pointwise_conv_filters = int(pointwise_conv_filters * alpha)
+
+        x = GroupConv2d(n_groups, n_groups, 3, stride = stride,
+                        include_bias = False, name = 'conv_dw_%d' % block_id)(inputs)
+        x = BN(name = 'conv_dw_%d_bn' % block_id, act = 'relu')(x)
+
+        x = Conv2d(pointwise_conv_filters, 1, include_bias = False, stride = 1, name = 'conv_pw_%d' % block_id)(x)
+        x = BN(name = 'conv_pw_%d_bn' % block_id, act = 'relu')(x)
+        return x, pointwise_conv_filters
+
+    inp = Input(n_channels=n_channels, width=width, height=height, name='data', offsets=offsets,
+                random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation)
+    x, depth = _conv_block(inp, 32, alpha, stride = 2)
+    x, depth = _depthwise_conv_block(x, depth, 64, alpha, depth_multiplier, block_id = 1)
+
+    x, depth = _depthwise_conv_block(x, depth, 128, alpha, depth_multiplier,
+                                     stride = 2, block_id = 2)
+    x, depth = _depthwise_conv_block(x, depth, 128, alpha, depth_multiplier, block_id = 3)
+
+    x, depth = _depthwise_conv_block(x, depth, 256, alpha, depth_multiplier,
+                                     stride = 2, block_id = 4)
+    x, depth = _depthwise_conv_block(x, depth, 256, alpha, depth_multiplier, block_id = 5)
+
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier,
+                                     stride = 2, block_id = 6)
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier, block_id = 7)
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier, block_id = 8)
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier, block_id = 9)
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier, block_id = 10)
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier, block_id = 11)
+
+    x, depth = _depthwise_conv_block(x, depth, 1024, alpha, depth_multiplier,
+                                     stride = 2, block_id = 12)
+    x, depth = _depthwise_conv_block(x, depth, 1024, alpha, depth_multiplier, block_id = 13)
+
+    x = Pooling(width=int(width/2**5), height=int(height/2**5), pool = 'mean')(x)
+    x = OutputLayer(n=n_classes)(x)
+
+    model = Model(conn, inp, x)
+    model.model_name = model_table
+    model.compile()
 
     return model
 
