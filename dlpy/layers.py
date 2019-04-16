@@ -601,7 +601,7 @@ class Conv2d(_Conv):
 class GroupConv2d(Conv2d):
     type = 'groupconvo'
     type_label = 'GroupConvo.'
-    type_desc = 'Group Convolution layer'
+    type_desc = 'Group convolution layer'
     can_be_last_layer = False
     number_of_instances = 0
 
@@ -1924,7 +1924,7 @@ class ChannelShuffle(Layer):
     '''
     type = 'channelshuffle'
     type_label = 'ChannelShuffle'
-    type_desc = 'Channel Shuffle layer'
+    type_desc = 'Channel shuffle layer'
     can_be_last_layer = False
     number_of_instances = 0
 
@@ -1963,7 +1963,7 @@ class ChannelShuffle(Layer):
 
 class RegionProposal(Layer):
     '''
-    RegionProposal layer
+    Region proposal layer
 
     Parameters
     ----------
@@ -2015,7 +2015,7 @@ class RegionProposal(Layer):
     '''
     type = 'regionproposal'
     type_label = 'RegionProposal'
-    type_desc = 'Region Proposal layer'
+    type_desc = 'Region proposal layer'
     can_be_last_layer = True
     number_of_instances = 0
 
@@ -2085,7 +2085,7 @@ class ROIPooling(Layer):
     '''
     type = 'roipooling'
     type_label = 'ROIPooling'
-    type_desc = 'ROI Pooling layer'
+    type_desc = 'Region pooling layer'
     can_be_last_layer = False
     number_of_instances = 0
 

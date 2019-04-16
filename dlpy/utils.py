@@ -1564,8 +1564,8 @@ def plot_anchors(base_anchor_size, anchor_scale, anchor_ratio, image_size, figsi
     fig, ax = plt.subplots(1, figsize = figsize)
     plt.xticks([]), plt.yticks([])
     background = np.tile((255, 255, 255), (int(max_anchor_height), int(max_anchor_width), 1))
-    image_region = (int((max_anchor_height - image_size[0]) / 2), int((max_anchor_height + image_size[0]) / 2),
-                    int((max_anchor_width - image_size[1]) / 2), int((max_anchor_width + image_size[1]) / 2))
+    image_region = (int((max_anchor_height - img_height) / 2), int((max_anchor_height + img_height) / 2),
+                    int((max_anchor_width - img_width) / 2), int((max_anchor_width + img_width) / 2))
     background[image_region[0]: image_region[1], image_region[2]: image_region[3], :] = np.array((244, 203, 66))
     ax.imshow(background)
 
