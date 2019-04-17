@@ -2090,9 +2090,8 @@ def extract_rpn_layer(layer_table):
         Options that can be passed to layer definition
 
     '''
-    num_keys = ['iou_for_negative', 'rpn_nms_threshold', 'base_anchor_size', 'max_label_per_image',
-                'roi_train_sample_num', 'doRPNOnly', 'proposed_roi_num_train',
-                'proposed_roi_num_score', 'anchor_num_to_sample']
+    num_keys = ['base_anchor_size', 'max_label_per_image', 'roi_train_sample_num', 'do_RPN_only',
+                'proposed_roi_num_train', 'proposed_roi_num_score', 'anchor_num_to_sample']
     if __dev__:
         num_keys += ['preNmsTopNScore', 'preNmsTopNTrain', 'preNmsTopNTrain', 'preNmsTopNScore']
     str_key = 'act'
@@ -2114,12 +2113,12 @@ def extract_rpn_layer(layer_table):
     rpn_layer_config['anchor_ratio'] = []
 
     for i in range(num_scale):
-        rpn_layer_config['anchors'].append(
+        rpn_layer_config['anchor_scale'].append(
             layer_table['_DLNumVal_'][layer_table['_DLKey1_'] ==
                                       'dlregionproposalopts.anchorScale.{}'.format(i)].tolist()[0])
 
     for i in range(num_ratio):
-        rpn_layer_config['anchors'].append(
+        rpn_layer_config['anchor_ratio'].append(
             layer_table['_DLNumVal_'][layer_table['_DLKey1_'] ==
                                       'dlregionproposalopts.anchorRatio.{}'.format(i)].tolist()[0])
 
@@ -2145,7 +2144,7 @@ def extract_roipooling_layer(layer_table):
         Options that can be passed to layer definition
 
     '''
-    num_keys = ['outputHeight', 'spatialScale', 'outputWidth', 'maxObjectNum', 'detectionThreshold', 'act']
+    num_keys = ['output_height', 'spatial_scale', 'output_width']
     str_keys = ['act']
 
     roipooling_layer_config = dict()
@@ -2179,7 +2178,7 @@ def extract_fastrcnn_layer(layer_table):
         Options that can be passed to layer definition
 
     '''
-    num_keys = ['classNumber', 'maxLabelPerImage', 'nmsIouThreshold', 'maxObjectNum', 'detectionThreshold']
+    num_keys = ['class_number', 'max_label_per_image', 'nms_iou_threshold', 'max_object_num', 'detection_threshold']
 
     rpn_layer_config = dict()
     for key in num_keys:

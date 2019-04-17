@@ -27,7 +27,8 @@ from .caffe_models import (model_vgg16, model_vgg19, model_resnet50,
                            model_resnet101, model_resnet152)
 from .keras_models import model_inceptionv3
 from .layers import (Input, InputLayer, Conv2d, Pooling, Dense, BN, OutputLayer, Detection, Concat, Reshape, Recurrent,
-                     Conv2DTranspose, Segmentation, RegionProposal, ROIPooling, FastRCNN, GroupConv2d, ChannelShuffle)
+                     Conv2DTranspose, Segmentation, RegionProposal, ROIPooling, FastRCNN, GroupConv2d, ChannelShuffle,
+                     Res)
 from .model import Model
 from .utils import random_name, DLPyError
 
@@ -2105,7 +2106,7 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
             Output tensor of block.
         """
         filters = int(filters * alpha)
-        x = Conv2d(filters, kernel, include_bias = False, stride = stride, name = 'conv1')(inputs)
+        x = Conv2d(filters, kernel, act = 'identity', include_bias = False, stride = stride, name = 'conv1')(inputs)
         x = BN(name = 'conv1_bn', act='relu')(x)
         return x, filters
 
@@ -2159,11 +2160,12 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
         """
         pointwise_conv_filters = int(pointwise_conv_filters * alpha)
 
-        x = GroupConv2d(n_groups, n_groups, 3, stride = stride,
+        x = GroupConv2d(n_groups, n_groups, 3, stride = stride, act = 'identity',
                         include_bias = False, name = 'conv_dw_%d' % block_id)(inputs)
         x = BN(name = 'conv_dw_%d_bn' % block_id, act = 'relu')(x)
 
-        x = Conv2d(pointwise_conv_filters, 1, include_bias = False, stride = 1, name = 'conv_pw_%d' % block_id)(x)
+        x = Conv2d(pointwise_conv_filters, 1, act = 'identity', include_bias = False, stride = 1,
+                   name = 'conv_pw_%d' % block_id)(x)
         x = BN(name = 'conv_pw_%d_bn' % block_id, act = 'relu')(x)
         return x, pointwise_conv_filters
 
@@ -2194,6 +2196,116 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
 
     x = Pooling(width=int(width/2**5), height=int(height/2**5), pool = 'mean')(x)
     x = OutputLayer(n=n_classes)(x)
+
+    model = Model(conn, inp, x)
+    model.model_name = model_table
+    model.compile()
+
+    return model
+
+
+def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, width=224, height=224, scale=1,
+                random_flip='none', random_crop='none', random_mutation='none', offsets=(103.939, 116.779, 123.68),
+                alpha=1):
+    def _make_divisible(v, divisor, min_value = None):
+        if min_value is None:
+            min_value = divisor
+        new_v = max(min_value, int(v + divisor / 2) // divisor * divisor)
+        # Make sure that round down does not go down by more than 10%.
+        if new_v < 0.9 * v:
+            new_v += divisor
+        return new_v
+
+    def _inverted_res_block(inputs, in_channels, expansion, stride, alpha, filters, block_id):
+        # in_channels = backend.int_shape(inputs)[channel_axis]
+        pointwise_conv_filters = int(filters * alpha)
+        pointwise_filters = _make_divisible(pointwise_conv_filters, 8)
+        x = inputs
+        prefix = 'block_{}_'.format(block_id)
+        n_groups = in_channels
+
+        if block_id:
+            # Expand
+            n_groups = expansion * in_channels
+            x = Conv2d(expansion * in_channels, 1, include_bias = False, act = 'identity',
+                       name = prefix + 'expand')(x)
+            x = BN(name = prefix + 'expand_BN', act = 'identity')(x)
+        else:
+            prefix = 'expanded_conv_'
+
+        # Depthwise
+        x = GroupConv2d(n_groups, n_groups, 3, stride = stride, act = 'identity',
+                        include_bias = False, name = prefix + 'depthwise')(x)
+        x = BN(name = prefix + 'depthwise_BN', act = 'relu')(x)
+
+        # Project
+        x = Conv2d(pointwise_filters, 1, include_bias = False, act = 'identity', name = prefix + 'project')(x)
+        x = BN(name = prefix + 'project_BN', act = 'identity')(x)
+
+        if in_channels == pointwise_filters and stride == 1:
+            return Res(name = prefix + 'add')([inputs, x]), pointwise_filters
+        return x, pointwise_filters
+
+    inp = Input(n_channels = n_channels, width = width, height = height, name = 'data', offsets = offsets, scale = scale,
+                random_flip = random_flip, random_crop = random_crop, random_mutation = random_mutation)
+    first_block_filters = _make_divisible(32 * alpha, 8)
+    x = Conv2d(first_block_filters, 3, stride = 2, include_bias = False, name = 'Conv1')(inp)
+    x = BN(name = 'bn_Conv1', act='relu')(x)
+
+    x, n_channels = _inverted_res_block(x, first_block_filters, filters = 16, alpha = alpha, stride = 1,
+                                        expansion = 1, block_id = 0)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 24, alpha = alpha, stride = 2,
+                                        expansion = 6, block_id = 1)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 24, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 2)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 32, alpha = alpha, stride = 2,
+                                        expansion = 6, block_id = 3)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 32, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 4)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 32, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 5)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 64, alpha = alpha, stride = 2,
+                                        expansion = 6, block_id = 6)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 64, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 7)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 64, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 8)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 64, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 9)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 96, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 10)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 96, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 11)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 96, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 12)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 160, alpha = alpha, stride = 2,
+                                        expansion = 6, block_id = 13)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 160, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 14)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 160, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 15)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 320, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 16)
+
+    # no alpha applied to last conv as stated in the paper:
+    # if the width multiplier is greater than 1 we
+    # increase the number of output channels
+    if alpha > 1.0:
+        last_block_filters = _make_divisible(1280 * alpha, 8)
+    else:
+        last_block_filters = 1280
+
+    x = Conv2d(last_block_filters, 1, include_bias = False, name = 'Conv_1', act = 'identity')(x)
+    x = BN(name = 'Conv_1_bn', act = 'relu')(x)
+
+    x = Pooling(width = int(width / 2 ** 5), height = int(height / 2 ** 5), pool = 'mean')(x)
+    x = OutputLayer(n = n_classes)(x)
 
     model = Model(conn, inp, x)
     model.model_name = model_table

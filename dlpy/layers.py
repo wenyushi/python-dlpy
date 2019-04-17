@@ -1988,7 +1988,7 @@ class RegionProposal(Layer):
         Specifies the coordinates format type in the input label and detection result.
         Valid Values: RECT, COCO, YOLO
         Default: COCO
-    do_rpn_only : Boolean, optional
+    do_RPN_only : Boolean, optional
         Specifies that in the model, only Region Proposal task is to be done in the model,
         not including the Fast RCNN task
         Default: FALSE
@@ -2021,7 +2021,7 @@ class RegionProposal(Layer):
     number_of_instances = 0
 
     def __init__(self, anchor_ratio, anchor_scale, name=None, act='AUTO', anchor_num_to_sample=256, base_anchor_size=16,
-                 coord_type='COCO', do_rpn_only=False, max_label_per_image=200, proposed_roi_num_score=300,
+                 coord_type='COCO', do_RPN_only=False, max_label_per_image=200, proposed_roi_num_score=300,
                  proposed_roi_num_train=2000, roi_train_sample_num=128, src_layers=None, **kwargs):
 
         if not __dev__ and len(kwargs) > 0:
@@ -2115,7 +2115,7 @@ class ROIPooling(Layer):
     def output_size(self):
         if self._output_size is None:
             self._output_size = (self.config['output_width'], self.config['output_height'],
-                                 self.src_layers[0].output_size[2])
+                                 self.src_layers[0].output_size[1])
         return self._output_size
 
     @property

@@ -442,3 +442,13 @@ class TestApplications(unittest.TestCase):
         from dlpy.applications import SpeechRecognition
         model = SpeechRecognition(self.s, n_blocks=1)
         model.print_summary()
+
+    def test_mobilenetv1(self):
+        from dlpy.applications import MobileNetV1
+        model = MobileNetV1(self.s)
+        model.print_summary()
+
+    def test_mobilenetv2(self):
+        from dlpy.applications import MobileNetV2
+        model = MobileNetV2(self.s)
+        model.print_summary()

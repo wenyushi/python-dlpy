@@ -1280,6 +1280,12 @@ class TestModel(unittest.TestCase):
         ax = model1.plot_training_history(tick_frequency=tick_frequency)
         self.assertEqual(len(ax.xaxis.majorTicks), model1.n_epochs)
 
+    def test_faster_rcnn_import(self):
+        if self.data_dir is None:
+            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
+        faster_rcnn = Model.from_sashdat(self.s, self.data_dir + 'faster_rcnn_face_detection.sashdat')
+        faster_rcnn.print_summary()
+
     @classmethod
     def tearDownClass(cls):
         # tear down tests
