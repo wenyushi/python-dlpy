@@ -2280,3 +2280,4 @@ def _unpack_config(config):
 
 # Aliases
 Transconvo = Conv2DTranspose
+Add = Res

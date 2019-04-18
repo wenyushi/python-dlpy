@@ -280,9 +280,6 @@ class Sequential(Model):
                             if layer.name is None:
                                 layer.format_name()
                         '''
-                        if layer.type == 'transconvo':
-                            layer.calculate_output_padding()
-                            del layer.config['output_size']
                         if layer.name is None:
                             layer.format_name(local_count=layer_counts[layer.type])
                 else:

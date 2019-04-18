@@ -602,8 +602,6 @@ class Network(Layer):
                 display(pd.concat([self.summary, total], ignore_index = True))
             else:
                 display(self.summary)
-
-
         except ImportError:
             print(self.summary)
 
