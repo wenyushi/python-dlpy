@@ -270,24 +270,24 @@ class TestNetwork(tm.TestCase):
             model = Model(self.s, inputs=inputs, outputs=output1)
             model.compile()
 
-    def test_lack_inputs_outputs(self):
-        with self.assertRaises(DLPyError):
-            inputs = Input(3, 512, 512, scale=1.0 / 255, name='input1')
-            conv1 = Conv2d(8, 3, act='relu')(inputs)
-            conv2 = Conv2d(8, 3, act='relu')(inputs)
-            conv3 = Conv2d(8, 3)([conv1])
-            output1 = OutputLayer(name='output1')(conv3)
-            model = Model(self.s, inputs=inputs)
-            model.compile()
-
-        with self.assertRaises(DLPyError):
-            inputs = Input(3, 512, 512, scale=1.0 / 255, name='input1')
-            conv1 = Conv2d(8, 3, act='relu')(inputs)
-            conv2 = Conv2d(8, 3, act='relu')(inputs)
-            conv3 = Conv2d(8, 3)([conv1])
-            output1 = OutputLayer(name='output1')(conv3)
-            model = Model(self.s, outputs=output1)
-            model.compile()
+    # def test_lack_inputs_outputs(self):
+    #     with self.assertRaises(DLPyError):
+    #         inputs = Input(3, 512, 512, scale=1.0 / 255, name='input1')
+    #         conv1 = Conv2d(8, 3, act='relu')(inputs)
+    #         conv2 = Conv2d(8, 3, act='relu')(inputs)
+    #         conv3 = Conv2d(8, 3)([conv1])
+    #         output1 = OutputLayer(name='output1')(conv3)
+    #         model = Model(self.s, inputs=inputs)
+    #         model.compile()
+    #
+    #     with self.assertRaises(DLPyError):
+    #         inputs = Input(3, 512, 512, scale=1.0 / 255, name='input1')
+    #         conv1 = Conv2d(8, 3, act='relu')(inputs)
+    #         conv2 = Conv2d(8, 3, act='relu')(inputs)
+    #         conv3 = Conv2d(8, 3)([conv1])
+    #         output1 = OutputLayer(name='output1')(conv3)
+    #         model = Model(self.s, outputs=output1)
+    #         model.compile()
 
     def test_submodel_as_input_network(self):
         inputs1 = Input(1, 53, 53, scale=1.0 / 255, name='InputLayer_1')
@@ -509,6 +509,46 @@ class TestNetwork(tm.TestCase):
         self.assertEqual(len(triplet_model.layers), 31)
         # triplet_model.share_weights({'Convo.1_1': ['Convo.1_2', 'Convo.1_3']})
         triplet_model.compile()
+
+    def test_triplet_loss(self):
+        from dlpy.sequential import Sequential
+        model = Sequential(self.s, model_table = 'Simple_CNN')
+        model.add(InputLayer(3, 48, 96, scale = 1 / 255, random_mutation = 'none'))
+        model.add(Conv2d(64, 7, include_bias = True, act = 'relu'))
+        model.add(Pooling(2))
+        model.add(Conv2d(64, 3, include_bias = True, act = 'relu'))
+        model.add(Pooling(2))
+        model.add(Conv2d(64, 3, include_bias = True, act = 'relu'))
+        model.add(Pooling(2))
+        model.add(Conv2d(64, 3, include_bias = True, act = 'relu'))
+        model.add(Pooling(2))
+        model.add(Dense(16, act = 'identity'))
+        model.add(OutputLayer(n = 1, act = 'sigmoid'))
+
+        branch = model.to_functional_model(stop_layers = model.layers[-1])
+        inp1 = Input(**branch.layers[0].config)  # tensor
+        branch1 = branch(inp1)  # tensor
+        inp2 = Input(**branch.layers[0].config)  # tensor
+        branch2 = branch(inp2)  # tensor
+        inp3 = Input(**branch.layers[0].config)  # tensor
+        branch3 = branch(inp3)  # tensor
+
+        triplet = CLoss(margin = -0.5)(branch1 + branch2 + branch3)
+        # create the model from tensors
+        triplet_model = Model(self.s, inputs = [inp1, inp2, inp3], outputs = triplet,
+                              model_table = 'model', model_weights = 'model_weights')
+
+        # triplet_model.share_weights([{'Convo.1_1': ['Convo.1_2', 'Convo.1_3']},
+        #                              {'Convo.2_1': ['Convo.2_2', 'Convo.2_3']},
+        #                              {'Convo.3_1': ['Convo.3_2', 'Convo.3_3']},
+        #                              {'Convo.4_1': ['Convo.4_2', 'Convo.4_3']},
+        #                              {'F.C.1_1': ['F.C.1_2', 'F.C.1_3']}])
+        triplet_model.compile()
+        triplet_model.print_summary()
+        self.assertEqual(len(triplet_model.layers), 31)
+        # self.assertEqual(triplet_model.model_weights, dict(name='model_weights'))
+        self.assertEqual(triplet_model.model_table, dict(name='model'))
+
 
     @classmethod
     def tearDownClass(cls):

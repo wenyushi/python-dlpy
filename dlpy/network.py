@@ -68,20 +68,21 @@ class Network(Layer):
     sub_networks = []
 
     def __init__(self, conn, inputs=None, outputs=None, model_table=None, model_weights=None):
-        if model_table is not None and any(i is not None for i in [inputs, outputs]):
-            raise DLPyError('Either parameter model_table or inputs and outputs needs to be set.\n'
-                            'The following cases are valid.\n'
-                            '1. model_table = "your_model_table"; inputs = None; outputs = None.\n'
-                            '2. model_table = None; inputs = input_layer(s); outputs = output_layer.'
-                            )
-        name = 'model' + str(self.number_of_instances)
+        # if model_table is not None and any(i is not None for i in [inputs, outputs]):
+        #     raise DLPyError('Either parameter model_table or inputs and outputs needs to be set.\n'
+        #                     'The following cases are valid.\n'
+        #                     '1. model_table = "your_model_table"; inputs = None; outputs = None.\n'
+        #                     '2. model_table = None; inputs = input_layer(s); outputs = output_layer.'
+        #                     )
+        if (inputs is None or outputs is None) and (inputs is not None or outputs is not None):
+            raise ValueError('Both inputs and outputs should be specified if one of them is not None')
         self._init_model(conn, model_table, model_weights)
-        if all(i is None for i in [inputs, outputs, model_table]):
-            return
+        # if all(i is None for i in [inputs, outputs, model_table]):
+        #     return
         if self.__class__.__name__ == 'Model':
-            if None in [inputs, outputs]:
-                raise DLPyError('Parameter inputs and outputs are required.')
-            self._map_graph_network(inputs, outputs)
+            if all(i is not None for i in [inputs, outputs]):
+                # raise DLPyError('Parameter inputs and outputs are required.')
+                self._map_graph_network(inputs, outputs)
 
     def _init_model(self, conn, model_table=None, model_weights=None):
         conn.loadactionset(actionSet='deeplearn', _messagelevel='error')
@@ -102,7 +103,10 @@ class Network(Layer):
         if model_weights is None:
             self.model_weights = self.conn.CASTable('{}_weights'.format(self.model_name))
         else:
-            self.set_weights(model_weights)
+            if self.conn.tableexists(model_weights).exists == 1:
+                self.set_weights(model_weights)
+            else:
+                self.model_weights = self.conn.CASTable(**input_table_check(model_weights))
 
         self.layers = []
         self.model_type = 'CNN'
@@ -641,6 +645,7 @@ class Network(Layer):
                             table=weight_tbl)
 
         self.model_weights = self.conn.CASTable(name=self.model_name + '_weights')
+        # todo: check if the weights table exits
         print('NOTE: Model weights attached successfully!')
 
     def load(self, path, display_note=True):

@@ -325,7 +325,7 @@ class TestLayers(unittest.TestCase):
 
     def test_group_conv1(self):
         group_conv1 = GroupConv2d(n_filters=30, n_groups=3, stride_horizontal = 2)
-        self.assertTrue(group_conv1.config['n_groups'] == 3)
+        self.assertTrue(group_conv1.config['nGroups'] == 3)
 
     def test_mapping_dict(self):
         mapping = get_mapping_dict()

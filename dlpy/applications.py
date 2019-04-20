@@ -2057,9 +2057,10 @@ def ResNet_Wide(conn, model_table='WIDE_RESNET', batch_norm_first=True, number_o
     return model
 
 
-def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, width=224, height=224, scale=1,
+def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, width=224, height=224,
                 random_flip='none', random_crop='none', random_mutation='none',
-                offsets=(103.939, 116.779, 123.68), alpha=1, depth_multiplier=1):
+                norm_stds = [255 * 0.229, 255 * 0.224, 255 * 0.225], offsets = (255 * 0.485, 255 * 0.456, 255 * 0.406),
+                alpha=1, depth_multiplier=1):
     def _conv_block(inputs, filters, alpha, kernel = 3, stride = 1):
         """Adds an initial convolution layer (with batch normalization and relu6).
         # Arguments
@@ -2169,7 +2170,8 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
         x = BN(name = 'conv_pw_%d_bn' % block_id, act = 'relu')(x)
         return x, pointwise_conv_filters
 
-    inp = Input(n_channels=n_channels, width=width, height=height, name='data', offsets=offsets,
+    inp = Input(n_channels=n_channels, width=width, height=height, name='data',
+                norm_stds = norm_stds, offsets = offsets,
                 random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation)
     x, depth = _conv_block(inp, 32, alpha, stride = 2)
     x, depth = _depthwise_conv_block(x, depth, 64, alpha, depth_multiplier, block_id = 1)
@@ -2197,16 +2199,15 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
     x = Pooling(width=int(width/2**5), height=int(height/2**5), pool = 'mean')(x)
     x = OutputLayer(n=n_classes)(x)
 
-    model = Model(conn, inp, x)
-    model.model_name = model_table
+    model = Model(conn, inp, x, model_table)
     model.compile()
 
     return model
 
 
-def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, width=224, height=224, scale=1,
-                random_flip='none', random_crop='none', random_mutation='none', offsets=(103.939, 116.779, 123.68),
-                alpha=1):
+def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, width=224, height=224,
+                norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
+                random_flip='none', random_crop='none', random_mutation='none', alpha=1):
     def _make_divisible(v, divisor, min_value = None):
         if min_value is None:
             min_value = divisor
@@ -2246,7 +2247,8 @@ def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, w
             return Res(name = prefix + 'add')([inputs, x]), pointwise_filters
         return x, pointwise_filters
 
-    inp = Input(n_channels = n_channels, width = width, height = height, name = 'data', offsets = offsets, scale = scale,
+    inp = Input(n_channels = n_channels, width = width, height = height, name = 'data',
+                norm_stds = norm_stds, offsets = offsets,
                 random_flip = random_flip, random_crop = random_crop, random_mutation = random_mutation)
     first_block_filters = _make_divisible(32 * alpha, 8)
     x = Conv2d(first_block_filters, 3, stride = 2, include_bias = False, name = 'Conv1')(inp)
@@ -2307,8 +2309,7 @@ def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, w
     x = Pooling(width = int(width / 2 ** 5), height = int(height / 2 ** 5), pool = 'mean')(x)
     x = OutputLayer(n = n_classes)(x)
 
-    model = Model(conn, inp, x)
-    model.model_name = model_table
+    model = Model(conn, inp, x, model_table)
     model.compile()
 
     return model
@@ -2531,7 +2532,9 @@ def DenseNet121(conn, model_table='DENSENET121', n_classes=1000, conv_channel=64
 
 
 def Darknet_Reference(conn, model_table='Darknet_Reference', n_classes=1000, act='leaky',
-                      n_channels=3, width=224, height=224, scale=1.0 / 255, random_flip='H', random_crop='UNIQUE'):
+                      n_channels=3, width=224, height=224,
+                      norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
+                      random_flip='H', random_crop='UNIQUE'):
 
     '''
     Generates a deep learning model with the Darknet_Reference architecture.
@@ -2587,7 +2590,7 @@ def Darknet_Reference(conn, model_table='Darknet_Reference', n_classes=1000, act
 
     model = Sequential(conn=conn, model_table=model_table)
 
-    model.add(InputLayer(n_channels=n_channels, width=width, height=height, scale=scale,
+    model.add(InputLayer(n_channels=n_channels, width=width, height=height, norm_stds=norm_stds, offsets=offsets,
                          random_flip=random_flip, random_crop=random_crop))
 
     # conv1 224
@@ -2627,7 +2630,8 @@ def Darknet_Reference(conn, model_table='Darknet_Reference', n_classes=1000, act
 
 
 def Darknet(conn, model_table='Darknet', n_classes=1000, act='leaky', n_channels=3, width=224, height=224,
-            scale=1.0 / 255, random_flip='H', random_crop='UNIQUE'):
+            norm_stds = [255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
+            random_flip='H', random_crop='UNIQUE'):
     '''
     Generate a deep learning model with the Darknet architecture.
 
@@ -2686,7 +2690,7 @@ def Darknet(conn, model_table='Darknet', n_classes=1000, act='leaky', n_channels
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height,
-                         scale=scale, random_flip=random_flip,
+                         norm_stds=norm_stds, random_flip=random_flip, offsets=offsets,
                          random_crop=random_crop))
     # conv1 224 416
     model.add(Conv2d(32, width=3, act='identity', include_bias=False, stride=1))
@@ -2955,7 +2959,8 @@ def YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=416, he
     return model
 
 
-def YoloV2_MultiSize(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=416, height=416, scale=1.0 / 255,
+def YoloV2_MultiSize(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=416, height=416,
+                     norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
                      random_mutation='NONE', act='leaky', act_detection='AUTO', softmax_for_class_prob=True,
                      coord_type='YOLO', max_label_per_image=30, max_boxes=30,
                      n_classes=20, predictions_per_grid=5, do_sqrt=True, grid_number=13,
@@ -3070,7 +3075,7 @@ def YoloV2_MultiSize(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, wid
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, random_mutation=random_mutation,
-                         scale=scale))
+                         norm_stds = norm_stds, offsets = offsets))
 
     # conv1 224 416
     model.add(Conv2d(32, width=3, act='identity', include_bias=False, stride=1))
@@ -3171,7 +3176,8 @@ def YoloV2_MultiSize(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, wid
     return model
 
 
-def Tiny_YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=416, height=416, scale=1.0 / 255,
+def Tiny_YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=416, height=416,
+                norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
                 random_mutation='NONE', act='leaky', act_detection='AUTO', softmax_for_class_prob=True,
                 coord_type='YOLO', max_label_per_image=30, max_boxes=30,
                 n_classes=20, predictions_per_grid=5, do_sqrt=True, grid_number=13,
@@ -3285,7 +3291,7 @@ def Tiny_YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=41
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, random_mutation=random_mutation,
-                         scale=scale))
+                         norm_stds = norm_stds, offsets = offsets))
     # conv1 416 448
     model.add(Conv2d(n_filters=16, width=3, act='identity', include_bias=False, stride=1))
     model.add(BN(act=act))

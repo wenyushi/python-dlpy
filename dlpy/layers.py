@@ -339,10 +339,10 @@ class Layer(object):
 
 
 def Input(n_channels=None, width=None, height=None, name=None, nominals=None, std=None, scale=None,
-          offsets=None, dropout=None, random_flip=None, random_crop=None, random_mutation=None):
+          offsets=None, dropout=None, random_flip=None, random_crop=None, random_mutation=None, norm_stds=None):
     # used to instantiate a tensor
     input_layer = InputLayer(n_channels, width, height, name, nominals, std, scale, offsets,
-                             dropout, random_flip, random_crop, random_mutation)
+                             dropout, random_flip, random_crop, random_mutation, norm_stds)
     return input_layer.input_tenor
 
 
@@ -400,7 +400,8 @@ class InputLayer(Layer):
     number_of_instances = 0
 
     def __init__(self, n_channels=None, width=None, height=None, name=None, nominals=None, std=None, scale=None,
-                 offsets=None, dropout=None, random_flip=None, random_crop=None, random_mutation=None, **kwargs):
+                 offsets=None, dropout=None, random_flip=None, random_crop=None, random_mutation=None,
+                 norm_stds=None, **kwargs):
 
         if not __dev__ and len(kwargs) > 0:
             raise DLPyError('**kwargs can be used only in development mode.')
