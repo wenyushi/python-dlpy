@@ -1,3 +1,8 @@
 [
-  "dlpy/tests/test_model.py::TestModel::test_mobilenet"
+  "dlpy/tests/test_utils.py::TestUtils::test_camelcase_to_underscore",
+  "dlpy/tests/test_utils.py::TestUtils::test_create_object_detection_table",
+  "dlpy/tests/test_utils.py::TestUtils::test_create_object_detection_table_2",
+  "dlpy/tests/test_utils.py::TestUtils::test_get_anchors",
+  "dlpy/tests/test_utils.py::TestUtils::test_get_txt_annotation",
+  "dlpy/tests/test_utils.py::TestUtils::test_underscore_to_camelcase"
 ]

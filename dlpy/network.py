@@ -1599,6 +1599,32 @@ def extract_input_layer(layer_table):
     except IndexError:
         pass
 
+    input_layer_config['norm_stds'] = []
+    try:
+        input_layer_config['norm_stds'].append(
+            int(layer_table['_DLNumVal_'][layer_table['_DLKey1_'] ==
+                                          'inputopts.normstds'].tolist()[0]))
+    except IndexError:
+        pass
+    try:
+        input_layer_config['norm_stds'].append(
+            layer_table['_DLNumVal_'][layer_table['_DLKey1_'] ==
+                                      'inputopts.normstds.0'].tolist()[0])
+    except IndexError:
+        pass
+    try:
+        input_layer_config['norm_stds'].append(
+            layer_table['_DLNumVal_'][layer_table['_DLKey1_'] ==
+                                      'inputopts.normstds.1'].tolist()[0])
+    except IndexError:
+        pass
+    try:
+        input_layer_config['norm_stds'].append(
+            layer_table['_DLNumVal_'][layer_table['_DLKey1_'] ==
+                                      'inputopts.normstds.2'].tolist()[0])
+    except IndexError:
+        pass
+
     if layer_table['_DLChrVal_'][layer_table['_DLKey1_'] ==
                                  'inputopts.crop'].tolist()[0] == 'No cropping':
         input_layer_config['random_crop'] = 'none'
