@@ -2251,7 +2251,7 @@ def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, w
                 norm_stds = norm_stds, offsets = offsets,
                 random_flip = random_flip, random_crop = random_crop, random_mutation = random_mutation)
     first_block_filters = _make_divisible(32 * alpha, 8)
-    x = Conv2d(first_block_filters, 3, stride = 2, include_bias = False, name = 'Conv1')(inp)
+    x = Conv2d(first_block_filters, 3, stride = 2, include_bias = False, name = 'Conv1', act = 'identity')(inp)
     x = BN(name = 'bn_Conv1', act='relu')(x)
 
     x, n_channels = _inverted_res_block(x, first_block_filters, filters = 16, alpha = alpha, stride = 1,
