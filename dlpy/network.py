@@ -645,7 +645,6 @@ class Network(Layer):
                             table=weight_tbl)
 
         self.model_weights = self.conn.CASTable(name=self.model_name + '_weights')
-        # todo: check if the weights table exits
         print('NOTE: Model weights attached successfully!')
 
     def load(self, path, display_note=True):

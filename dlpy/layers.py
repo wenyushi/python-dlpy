@@ -107,11 +107,15 @@ class Tensor(object):
     def __init__(self, op, value=None):
         self._op = op  # the layer that produces the tensor.
         self._value = value
+        self._shape = None
 
     @property
     def shape(self):
-        # TODO: check shape
-        raise NotImplementedError
+        return self._shape
+
+    @shape.setter
+    def shape(self, value):
+        self._shape = value
 
 
 class Node(object):
@@ -232,9 +236,12 @@ class Layer(object):
 
             self._inbound_nodes = [Node(src_layer, self) for src_layer in self.src_layers]
             self.tensor = [Tensor(output_layer) for output_layer in self.output_layers]
+            for tensor, output_layer in zip(self.tensor, self.output_layers):
+                tensor.shape = output_layer
         else:
             self._inbound_nodes = Node(self.src_layers, self)
             self.tensor = Tensor(self)  # return Tensor object
+            self.tensor.shape = self.output_size
         return self.tensor
 
     def __lt__(self, other):

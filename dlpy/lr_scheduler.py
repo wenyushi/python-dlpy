@@ -71,11 +71,11 @@ class ReduceLROnPlateau(FCMPLR):
         super(ReduceLROnPlateau, self).__init__(conn, learning_rate = learning_rate, gamma = gamma,
                                                 fcmp_learning_rate = 'reduce_lr_on_plateau')
         conn.addRoutines(
-            routineCode = f'''
+            routineCode = '''
                         function reduce_lr_on_plateau(rate, initRate, gamma, loss[*]);
                             len = dim(loss);
                             temp_rate = initRate;
-                            cool_down_counter = {cool_down_iters};
+                            cool_down_counter = {0};
                             best = loss[1];
                             do i=1 to len;
                     
@@ -90,9 +90,9 @@ class ReduceLROnPlateau(FCMPLR):
                                     bad_epoch = 0;
                                 end;
                     
-                                if bad_epoch > {patience} then do;
+                                if bad_epoch > {1} then do;
                                     temp_rate = temp_rate * gamma;
-                                    cool_down_counter = {cool_down_iters};
+                                    cool_down_counter = {0};
                                     bad_epoch = 0;
                                 end;
                             end;
@@ -100,7 +100,7 @@ class ReduceLROnPlateau(FCMPLR):
                             put rate=;
                             return(rate);
                         endsub;
-                        ''',
+                        '''.format(cool_down_iters, patience),
             package = 'pkg',
             funcTable = dict(name = 'reduce_lr_on_plateau', replace = 1)
         )
@@ -114,15 +114,15 @@ class CyclicLR(FCMPLR):
         num_batch_per_epoch = math.ceil(conn.numrows(data).numrows / batch_size)
         step_size = int(num_batch_per_epoch * factor)
         conn.addRoutines(
-            routineCode = f'''
+            routineCode = '''
                         function cyclic_lr(rate, iterNum, batch, initRate);
-                            batch_cum = {num_batch_per_epoch} * iterNum + batch;
-                            cycle = floor(batch_cum / (2 * {step_size}) + 1);
-                            x = abs(batch_cum / {step_size} - 2 * cycle + 1);
-                            rate = initRate + ({max_lr} - initRate) * max(0, 1-x);
+                            batch_cum = {0} * iterNum + batch;
+                            cycle = floor(batch_cum / (2 * {1}) + 1);
+                            x = abs(batch_cum / {1} - 2 * cycle + 1);
+                            rate = initRate + ({2} - initRate) * max(0, 1-x);
                             return(rate);
                         endsub;
-                        ''',
+                        '''.format(num_batch_per_epoch, step_size, max_lr),
             package = 'pkg',
             funcTable = dict(name = 'cyclic_lr', replace = 1)
         )
