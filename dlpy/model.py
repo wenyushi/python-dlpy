@@ -110,15 +110,15 @@ class Model(Network):
         if not self.conn.has_actionset('fcmp'):
             self.conn.loadactionset(actionSet = 'fcmp', _messagelevel = 'error')
         self.conn.addRoutines(
-            routineCode = f'''
+            routineCode = '''
             function annealing_exp(rate, initRate, batch);
-                lrmin = {start_lr};
-                lrmax = {end_lr};
-                prt = batch / {num_iteration};
+                lrmin = {0};
+                lrmax = {1};
+                prt = batch / {2};
                 rate = min(lrmin*(lrmax/lrmin)**prt, lrmax);
                 return(rate);
             endsub;
-            ''',
+            '''.format(start_lr, end_lr, num_iteration),
             package = 'pkg',
             funcTable = dict(name = 'annealing_exp', replace = 1)
         )

@@ -34,7 +34,7 @@ class FCMPLR(_LRScheduler):
             conn.loadactionset(actionSet = 'fcmp', _messagelevel = 'error')
         active_caslib_name = conn.caslibinfo(active = True).CASLibInfo.loc[0]['Name']
         active_caslib_name = 'CASUSER' if active_caslib_name.startswith('CASUSER(') else active_caslib_name
-        conn.sessionProp.setsessopt(cmplib = f'{active_caslib_name}.{fcmp_learning_rate}')
+        conn.sessionProp.setsessopt(cmplib = active_caslib_name+'.'+fcmp_learning_rate)
         super(FCMPLR, self).__init__(fcmp_learning_rate=fcmp_learning_rate, learning_rate = learning_rate, gamma=gamma,
                                      step_size=step_size)
 
