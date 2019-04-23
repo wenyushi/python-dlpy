@@ -199,37 +199,7 @@ class TestApplications(unittest.TestCase):
 
     def test_densenet(self):
         from dlpy.applications import DenseNet
-        model = DenseNet(self.s)
-        model.print_summary()
-
-    def test_densenet_2(self):
-        from dlpy.applications import DenseNet
-        model = DenseNet(self.s, conv_channel=32)
-        model.print_summary()
-
-    def test_densenet_3(self):
-        from dlpy.applications import DenseNet
-        model = DenseNet(self.s, n_blocks=7)
-        model.print_summary()
-
-    def test_densenet_4(self):
-        from dlpy.applications import DenseNet
-        model = DenseNet(self.s, n_blocks=2)
-        model.print_summary()
-
-    def test_densenet121(self):
-        from dlpy.applications import DenseNet121
-        model = DenseNet121(self.s)
-        model.print_summary()
-
-    def test_densenet121_1(self):
-        from dlpy.applications import DenseNet121
-        model = DenseNet121(self.s, n_cells=[1, 1, 1, 1])
-        model.print_summary()
-
-    def test_densenet121_2(self):
-        from dlpy.applications import DenseNet121
-        model = DenseNet121(self.s, conv_channel=1)
+        model = DenseNet(self.s, blocks = [6, 12, 24, 16])
         model.print_summary()
 
     def test_darknet_ref(self):

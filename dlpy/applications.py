@@ -2418,115 +2418,85 @@ def DenseNet(conn, model_table='DenseNet', n_classes=None, conv_channel=16, grow
     return model
 
 
-def DenseNet121(conn, model_table='DENSENET121', n_classes=1000, conv_channel=64, growth_rate=32,
-                n_cells=[6, 12, 24, 16], n_channels=3, reduction=0.5, width=224, height=224, scale=1,
-                random_flip='none', random_crop='none', offsets=(103.939, 116.779, 123.68)):
-    '''
-    Generates a deep learning model with the DenseNet121 architecture.
+def DenseNet(conn, blocks, model_table='DenseNet', n_classes=1000, n_channels=3, width=224, height=224,
+             norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
+             random_flip='none', random_crop='none', random_mutation='none'):
 
-    Parameters
-    ----------
-    conn : CAS
-        Specifies the connection of the CAS connection.
-    model_table : string
-        Specifies the name of CAS table to store the model.
-    n_classes : int, optional
-        Specifies the number of classes. If None is assigned, the model will
-        automatically detect the number of classes based on the training set.
-        Default: None
-    conv_channel : int, optional
-        Specifies the number of filters of the first convolution layer.
-        Default: 16
-    growth_rate : int, optional
-        Specifies the growth rate of convolution layers.
-        Default: 12
-    n_cells : int, optional
-        Specifies the number of dense connection for each DenseNet block.
-        Default: 4
-    reduction : double, optional
-        Specifies the factor of transition blocks.
-        Default: 0.5
-    n_channels : int, optional
-        Specifies the number of the channels (i.e., depth) of the input layer.
-        Default: 3.
-    width : int, optional
-        Specifies the width of the input layer.
-        Default: 224.
-    height : int, optional
-        Specifies the height of the input layer.
-        Default: 224.
-    scale : double, optional
-        Specifies a scaling factor to be applied to each pixel intensity values.
-        Default: 1.
-    random_flip : string, optional
-        Specifies how to flip the data in the input layer when image data is
-        used. Approximately half of the input data is subject to flipping.
-        Valid Values: 'h', 'hv', 'v', 'none'
-        Default: 'none'
-    random_crop : string, optional
-        Specifies how to crop the data in the input layer when image data is
-        used. Images are cropped to the values that are specified in the width
-        and height parameters. Only the images with one or both dimensions
-        that are larger than those sizes are cropped.
-        Valid Values: 'none', 'unique'
-        Default: 'none'
-    offsets : double or iter-of-doubles, optional
-        Specifies an offset for each channel in the input data. The final input
-        data is set after applying scaling and subtracting the specified offsets.
-        Default: (103.939, 116.779, 123.68)
+    def dense_block(x, blocks, name):
+        """A dense block.
+        # Arguments
+            x: input tensor.
+            blocks: integer, the number of building blocks.
+            name: string, block label.
+        # Returns
+            output tensor for the block.
+        """
+        for i in range(blocks):
+            x = conv_block(x, 32, name = name + '_block' + str(i + 1))
+        return x
 
-    Returns
-    -------
-    :class:`Sequential`
+    def transition_block(x, reduction, name):
+        """A transition block.
+        # Arguments
+            x: input tensor.
+            reduction: float, compression rate at transition layers.
+            name: string, block label.
+        # Returns
+            output tensor for the block.
+        """
+        x = BN(name = name + '_bn', act = 'relu')(x)
+        x = Conv2d(x.shape[2] * reduction, 1, act = 'identity', include_bias = False, name = name + '_conv')(x)
+        x = Pooling(width = 2, height = 2, stride = 2, pool = 'mean', name = name + '_pool')(x)
+        return x
 
-    References
-    ----------
-    https://arxiv.org/pdf/1608.06993.pdf
+    def conv_block(x, growth_rate, name):
+        """A building block for a dense block.
+        # Arguments
+            x: input tensor.
+            growth_rate: float, growth rate at dense layers.
+            name: string, block label.
+        # Returns
+            Output tensor for the block.
+        """
+        x1 = BN(name = name + '_0_bn', act = 'relu')(x)
+        x1 = Conv2d(4 * growth_rate, 1, act = 'identity', include_bias = False, name = name + '_1_conv')(x1)
+        x1 = BN(name = name + '_1_bn', act = 'relu')(x1)
+        x1 = Conv2d(growth_rate, 3, act = 'identity', include_bias = False, name = name + '_2_conv')(x1)
+        x = Concat(name = name + '_concat')([x, x1])
+        return x
 
-    '''
-    n_blocks = len(n_cells)
+    inp = Input(n_channels = n_channels, width = width, height = height, name = 'data',
+                norm_stds = norm_stds, offsets = offsets,
+                random_flip = random_flip, random_crop = random_crop, random_mutation = random_mutation)
 
-    model = Sequential(conn=conn, model_table=model_table)
+    x = Conv2d(64, 7, stride=2, act = 'identity', include_bias=False, name='conv1/conv')(inp)
+    x = BN(name='conv1/bn', act='relu')(x)
+    x = Pooling(3, stride=2, name='pool1')(x)
 
-    model.add(InputLayer(n_channels=n_channels, width=width, height=height, scale=scale,
-                         random_flip=random_flip, offsets=offsets, random_crop=random_crop))
-    # Top layers
-    model.add(Conv2d(conv_channel, width=7, act='identity', include_bias=False, stride=2))
-    model.add(BN(act='relu'))
-    src_layer = Pooling(width=3, height=3, stride=2, padding=1, pool='max')
-    model.add(src_layer)
+    x = dense_block(x, blocks[0], name='conv2')
+    x = transition_block(x, 0.5, name='pool2')
+    x = dense_block(x, blocks[1], name='conv3')
+    x = transition_block(x, 0.5, name='pool3')
+    x = dense_block(x, blocks[2], name='conv4')
+    x = transition_block(x, 0.5, name='pool4')
+    x = dense_block(x, blocks[3], name='conv5')
 
-    for i in range(n_blocks):
-        for _ in range(n_cells[i]):
+    x = BN(name='bn', act = 'relu')(x)
 
-            model.add(BN(act='relu'))
-            model.add(Conv2d(n_filters=growth_rate * 4, width=1, act='identity', stride=1, include_bias=False))
+    x = Pooling(width = x.shape[0], height = x.shape[1], pool = 'mean', name='avg_pool')(x)
+    x = OutputLayer(n = n_classes, act='softmax', name='output_layer')(x)
 
-            model.add(BN(act='relu'))
-            src_layer2 = Conv2d(n_filters=growth_rate, width=3, act='identity', stride=1, include_bias=False)
+    # Create model.
+    if blocks == [6, 12, 24, 16]:
+        model = Model(conn, inp, x, model_table='densenet121')
+    elif blocks == [6, 12, 32, 32]:
+        model = Model(conn, inp, x, model_table='densenet169')
+    elif blocks == [6, 12, 48, 32]:
+        model = Model(conn, inp, x, model_table='densenet201')
+    else:
+        model = Model(conn, inp, x, model_table=model_table)
 
-            model.add(src_layer2)
-            src_layer = Concat(act='identity', src_layers=[src_layer, src_layer2])
-            model.add(src_layer)
-
-            conv_channel += growth_rate
-
-        if i != (n_blocks - 1):
-            # transition block
-            conv_channel = int(conv_channel * reduction)
-
-            model.add(BN(act='relu'))
-            model.add(Conv2d(n_filters=conv_channel, width=1, act='identity', stride=1, include_bias=False))
-            src_layer = Pooling(width=2, height=2, stride=2, pool='mean')
-
-            model.add(src_layer)
-
-    model.add(BN(act='identity'))
-    # Bottom Layers
-    pooling_size = (7, 7)
-    model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
-
-    model.add(OutputLayer(act='softmax', n=n_classes))
+    model.compile()
 
     return model
 

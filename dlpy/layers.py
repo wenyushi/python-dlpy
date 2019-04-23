@@ -1273,12 +1273,9 @@ class Concat(Layer):
         if self._output_size is None:
             if self.src_layers is None:
                 self._output_size = (0, 0, 0)
-            try:
-                self._output_size = (int(self.src_layers[0].output_size[0]),
-                                     int(self.src_layers[0].output_size[1]),
-                                     int(sum([item.output_size[2] for item in self.src_layers])))
-            except:
-                raise
+            self._output_size = (int(self.src_layers[0].output_size[0]),
+                                 int(self.src_layers[0].output_size[1]),
+                                 int(sum([item.output_size[2] for item in self.src_layers])))
         return self._output_size
 
 
