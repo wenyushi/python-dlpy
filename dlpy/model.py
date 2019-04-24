@@ -518,16 +518,16 @@ class Model(Network):
                             **kwargs)
         return r
 
-    def plot_training_history(self, items=('Loss', 'FitError'), fig_size=(12, 5), tick_frequency=1):
+    def plot_training_history(self, items=['Loss', 'FitError'], fig_size=(12, 5), tick_frequency=1):
         '''
         Display the training iteration history. If using in Jupyter, 
         supress return object with semicolon - plot_training_history();
 
         Parameters
         ----------
-        items : tuple, optional
+        items : list, optional
             Specifies the items to be displayed.
-            Default : ('Loss', 'FitError')
+            Default : ['Loss', 'FitError')
         fig_size : tuple, optional
             Specifies the size of the figure.
             Default : (12, 5)
@@ -550,9 +550,9 @@ class Model(Network):
                     len(self.training_history.Epoch) + 1, tick_frequency)))
             else:
                 x_ticks = self.training_history.Epoch.values
-            
-            return self.training_history.plot(x='Epoch', y=list(('Loss', 'FitError')), 
-                                              figsize=(12, 5),
+
+            return self.training_history.plot(x='Epoch', y=items,
+                                              figsize=fig_size,
                                               xticks=x_ticks)
         else:
             raise DLPyError('model.fit should be run before calling plot_training_history')

@@ -3146,7 +3146,7 @@ def YoloV2_MultiSize(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, wid
     return model
 
 
-def Tiny_YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=416, height=416,
+def Tiny_YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=416, height=416, scale=1,
                 norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
                 random_mutation='NONE', act='leaky', act_detection='AUTO', softmax_for_class_prob=True,
                 coord_type='YOLO', max_label_per_image=30, max_boxes=30,
