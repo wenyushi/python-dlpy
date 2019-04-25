@@ -899,6 +899,30 @@ class Pooling(Layer):
         return 0
 
 
+class GlobalAveragePooling2D(Pooling):
+    def __init__(self, name = None, src_layers = None, **kwargs):
+        super(GlobalAveragePooling2D, self).__init__(width=0, height=0, stride=1, name=None,
+                                                     pool='mean',src_layers=None, **kwargs)
+
+    @property
+    def output_size(self):
+        if self._output_size is None:
+            self._output_size = (1, 1, int(self.src_layers[0].output_size[2]))
+        return self._output_size
+
+    @property
+    def kernel_size(self):
+        return (int(self.src_layers[0].output_size[0]), int(self.src_layers[0].output_size[1]))
+
+    @property
+    def num_weights(self):
+        return 0
+
+    @property
+    def num_bias(self):
+        return 0
+
+
 class Dense(Layer):
     '''
     Fully connected layer
