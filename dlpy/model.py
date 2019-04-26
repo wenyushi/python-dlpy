@@ -2533,14 +2533,14 @@ class Optimizer(DLPyDict):
     def __init__(self, algorithm=VanillaSolver(StepLR()), mini_batch_size=1, seed=0, max_epochs=1, reg_l1=0, reg_l2=0,
                  dropout=0, dropout_input=0, dropout_type='standard', stagnation=0, threshold=0.00000001, f_conv=0,
                  snapshot_freq=0, log_level=0, bn_src_layer_warnings=True, freeze_layers_to=None, flush_weights=False,
-                 total_mini_batch_size=None, mini_batch_buf_size=None):
+                 total_mini_batch_size=None, mini_batch_buf_size=None, freeze_batch_norm_stats = False):
         DLPyDict.__init__(self, algorithm=algorithm, mini_batch_size=mini_batch_size, seed=seed, max_epochs=max_epochs,
                           reg_l1=reg_l1, reg_l2=reg_l2, dropout=dropout, dropout_input=dropout_input,
                           dropout_type=dropout_type, stagnation=stagnation, threshold=threshold, f_conv=f_conv,
                           snapshot_freq=snapshot_freq, log_level=log_level,
                           bn_src_layer_warnings=bn_src_layer_warnings, freeze_layers_to=freeze_layers_to,
                           flush_weights=flush_weights, total_mini_batch_size=total_mini_batch_size,
-                          mini_batch_buf_size=mini_batch_buf_size)
+                          mini_batch_buf_size=mini_batch_buf_size, freeze_batch_norm_stats = freeze_batch_norm_stats)
 
     def add_optimizer_mode(self, solver_mode_type='sync', sync_freq=None, alpha=None, damping=None):
         '''
