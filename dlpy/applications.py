@@ -2318,7 +2318,7 @@ def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, w
 def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3, width=224, height=224,
                  norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
                  random_flip='none', random_crop='none', random_mutation='none', scale_factor=1.0,
-                 num_shuffle_units = [3, 7, 3], bottleneck_ratio=0.25, groups=1):
+                 num_shuffle_units = [3, 7, 3], bottleneck_ratio=0.25, groups=1, block_act='relu'):
     import numpy as np
 
     def _block(x, channel_map, bottleneck_ratio, repeat = 1, groups = 1, stage = 1):
@@ -2408,13 +2408,13 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
         x = GroupConv2d(x.shape[-1], n_groups = x.shape[-1], width = 3, height = 3, include_bias = False,
                         stride = strides, act = 'identity',
                         name = '%s/1x1_dwconv_1' % prefix)(x)
-        x = BN(act = 'relu', name = '%s/bn_dwconv_1' % prefix)(x)
+        x = BN(act = block_act, name = '%s/bn_dwconv_1' % prefix)(x)
 
         out_channels = out_channels if strides == 1 else out_channels - in_channels
         x = GroupConv2d(out_channels, n_groups = groups, width = 1, height = 1, stride=1, act = 'identity',
                         include_bias = False, name = '%s/1x1_gconv_2' % prefix)(x)
 
-        x = BN(act = 'relu', name = '%s/bn_gconv_2' % prefix)(x)
+        x = BN(act = block_act, name = '%s/bn_gconv_2' % prefix)(x)
 
         if strides < 2:
             ret = Res(act = 'relu', name = '%s/add' % prefix)([x, inputs])
