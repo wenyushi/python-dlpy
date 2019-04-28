@@ -2107,8 +2107,8 @@ def extract_channelshuffle_layer(layer_table):
         Options that can be passed to layer definition
 
     '''
-    num_keys = ['scale', 'ngroups']
-    str_keys = ['act', 'init']
+    num_keys = ['scale', 'n_groups']
+    str_keys = ['init']
 
     channel_shuffle_layer_config = dict()
     channel_shuffle_layer_config.update(get_num_configs(num_keys, 'shuffleopts', layer_table))
