@@ -1575,10 +1575,10 @@ def plot_anchors(base_anchor_size, anchor_scale, anchor_ratio, image_size, figsi
     ax.imshow(background)
 
     for i, anchor in enumerate(anchors):
-        centric_x = (max_anchor_height - anchor[0]) / 2
-        centric_y = (max_anchor_width - anchor[1]) / 2
+        centric_x = (max_anchor_width - anchor[1]) / 2  # x
+        centric_y = (max_anchor_height - anchor[0]) / 2  # y
         color = color_map[i % len(anchor_scale)]
-        rect = patches.Rectangle((centric_x, centric_y), anchor[0], anchor[1], linewidth = 1,
+        rect = patches.Rectangle((centric_x, centric_y), anchor[1], anchor[0], linewidth = 2,
                                  edgecolor = color, facecolor = 'none')
         ax.add_patch(rect)
 
