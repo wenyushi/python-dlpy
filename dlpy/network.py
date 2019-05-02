@@ -96,6 +96,7 @@ class Network(Layer):
         if model_weights is None:
             self.model_weights = self.conn.CASTable('{}_weights'.format(self.model_name))
         else:
+            # TODO put tableexits in set_weights
             if self.conn.tableexists(model_weights).exists == 1:
                 self.set_weights(model_weights)
             else:
