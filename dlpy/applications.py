@@ -2419,7 +2419,7 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
         if strides < 2:
             ret = Res(act = 'relu', name = '%s/add' % prefix)([x, inputs])
         else:
-            avg = Pooling(width = 3, height = 3, stride = 2, name = '%s/avg_pool' % prefix)(inputs)
+            avg = Pooling(width = 3, height = 3, stride = 2, pool = 'mean', name = '%s/avg_pool' % prefix)(inputs)
             ret = Concat(act = 'relu', name = '%s/concat' % prefix)([x, avg])
 
         return ret
@@ -2471,7 +2471,8 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
                 random_flip = random_flip, random_crop = random_crop, random_mutation = random_mutation)
 
     # create shufflenet architecture
-    x = Conv2d(out_channels_in_stage[0], 3, include_bias=False, stride=2, act="relu", name="conv1")(inp)
+    x = Conv2d(out_channels_in_stage[0], 3, include_bias=False, stride=2, act="identity", name="conv1")(inp)
+    x = BN(act = 'relu', name = 'bn1')(x)
     x = Pooling(width = 3, height = 3, stride=2, name="maxpool1")(x)
 
     # create stages containing shufflenet units beginning at stage 2
