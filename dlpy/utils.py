@@ -1381,7 +1381,7 @@ def create_object_detection_table(conn, data_path, coord_type, output,
     return var_order[2:]
 
 
-def plot_helper(conn, image_table, num_plot, n_col, fig_size=None):
+def plot_helper(conn, image_table, num_plot, n_col, log_col=None, fig_size=None):
     with sw.option_context(print_messages = False):
         num_plot = min(conn.numrows(image_table).numrows, num_plot)
         fetch_images_data = conn.image.fetchImages(imageTable = {'name': image_table},
@@ -1413,14 +1413,15 @@ def plot_helper(conn, image_table, num_plot, n_col, fig_size=None):
         image = fetch_images_data['Images']['Image'][i]
         ax = fig.add_subplot(n_row, n_col, k)
         plt.imshow(image)
-        if '_path_' in fetch_images_data['Images'].columns:
-            plt.title(str(os.path.basename(fetch_images_data['Images']['_path_'].loc[i])))
+        if log_col in fetch_images_data['Images'].columns:
+            plt.title(str(fetch_images_data['Images'][log_col].loc[i]))
         k = k + 1
         plt.xticks([]), plt.yticks([])
     plt.show()
 
 
-def display_object_detections(conn, table, coord_type, max_objects=10, num_plot=10, n_col=2, fig_size=None):
+def display_object_detections(conn, table, coord_type, max_objects=10, num_plot=10, n_col=2,
+                              log_col=None, fig_size=None):
     '''
     Plot images with drawn bounding boxes.
 
@@ -1473,7 +1474,7 @@ def display_object_detections(conn, table, coord_type, max_objects=10, num_plot=
     # if random_plot:
     #     conn.shuffle(det_label_image_table, casout = {'name': det_label_image_table, 'replace': True})
 
-    plot_helper(conn, det_label_image_table, num_plot, n_col, fig_size)
+    plot_helper(conn, det_label_image_table, num_plot, n_col, log_col, fig_size)
 
     with sw.option_context(print_messages=False):
         conn.table.droptable(det_label_image_table)
