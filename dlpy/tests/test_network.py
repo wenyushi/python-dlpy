@@ -176,7 +176,7 @@ class TestNetwork(tm.TestCase):
     def test_network_transpose_conv(self):
         inputs = Input(3, 128, 64, scale = 0.004, name = 'input1')
         tconv1 = Conv2DTranspose(32, height = 5, width = 3, stride = 2, padding_height = 2,
-                            padding_width = 1, output_size = (256, 128, 32), name = 'trans1')(inputs)
+                                 padding_width = 1, output_size = (256, 128, 32), name = 'trans1')(inputs)
         seg1 = Segmentation(name = 'seg1')(tconv1)
         model = Model(self.s, inputs = inputs, outputs = seg1)
         model.compile()
@@ -557,6 +557,20 @@ class TestNetwork(tm.TestCase):
         self.assertEqual(len(triplet_model.layers), 31)
         # self.assertEqual(triplet_model.model_weights, dict(name='model_weights'))
         self.assertEqual(triplet_model.model_table, dict(name='model'))
+
+    def test_residual_output_shape0(self):
+        inLayer = Input(n_channels = 3, width = 32, height = 128,
+                        name = 'input1', random_mutation = 'random', random_flip = 'HV')
+        conv1 = Conv2d(32, 3, 3, name = 'conv1', act = 'relu', init = 'msra')([inLayer])
+        conv2 = Conv2d(32, 5, 5, name = 'conv2', act = 'relu', init = 'msra')([inLayer])
+        fc1 = Dense(3, name = 'fc1')([conv1])
+        fc2 = Dense(3, name = 'fc2')([conv2])
+        res = Res(name = 'res1')([fc1, fc2])
+        outLayer = OutputLayer(n = 3, name = 'output')([res])
+        model = Model(self.s, inLayer, outLayer)
+        model.compile()
+        self.assertEqual(model.summary['Output Size'].values[-2], 3)
+        model.print_summary()
 
 
     @classmethod

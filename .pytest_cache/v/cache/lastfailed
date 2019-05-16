@@ -14,6 +14,5 @@
   "dlpy/tests/test_model.py::TestModel::test_model_forecast1": true,
   "dlpy/tests/test_model.py::TestModel::test_model_forecast2": true,
   "dlpy/tests/test_model.py::TestModel::test_model_forecast3": true,
-  "dlpy/tests/test_network.py::TestNetwork::test_from_model": true,
   "dlpy/tests/test_network.py::TestNetwork::test_lack_inputs_outputs": true
 }

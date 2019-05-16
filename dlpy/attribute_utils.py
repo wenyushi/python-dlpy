@@ -27,7 +27,6 @@ import string
 import warnings
 import struct
 from dlpy.model import DataSpec
-from dlpy.layers import Layer
 
 def create_extended_attributes(conn, model_name, layers, data_spec, label_file_name=None):
 
@@ -61,7 +60,7 @@ def create_extended_attributes(conn, model_name, layers, data_spec, label_file_n
     if not isinstance(layers,list):
         raise TypeError('Parameter layers must be a list of strings.')
     else:
-        if not all(isinstance(x, Layer) for x in layers):
+        if not all(isinstance(x,str) for x in layers):
             raise TypeError('Some elements of the layers list are not strings.')
 
     # ensure list of data specs
