@@ -30,8 +30,8 @@ class _LRScheduler(DLPyDict):
 class FCMPLR(_LRScheduler):
 
     def __init__(self, conn, fcmp_learning_rate, learning_rate=0.001, gamma=0.1, step_size=10):
-        if not conn.has_actionset('fcmp'):
-            conn.loadactionset(actionSet = 'fcmp', _messagelevel = 'error')
+        if not conn.has_actionset('fcmpact'):
+            conn.loadactionset(actionSet = 'fcmpact', _messagelevel = 'error')
         active_caslib_name = conn.caslibinfo(active = True).CASLibInfo.loc[0]['Name']
         active_caslib_name = 'CASUSER' if active_caslib_name.startswith('CASUSER(') else active_caslib_name
         conn.sessionProp.setsessopt(cmplib = active_caslib_name+'.'+fcmp_learning_rate)

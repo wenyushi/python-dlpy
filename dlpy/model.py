@@ -107,8 +107,8 @@ class Model(Network):
         from parse import parse, search
         if start_lr >= end_lr:
             raise ValueError('start_lr should be smaller than end_lr')
-        if not self.conn.has_actionset('fcmp'):
-            self.conn.loadactionset(actionSet = 'fcmp', _messagelevel = 'error')
+        if not self.conn.has_actionset('fcmpact'):
+            self.conn.loadactionset(actionSet = 'fcmpact', _messagelevel = 'error')
         self.conn.addRoutines(
             routineCode = '''
             function annealing_exp(rate, initRate, batch);
@@ -1374,7 +1374,6 @@ class Model(Network):
 
 
         return self._retrieve_('deeplearn.dlscore', message_level=self.score_message_level, **parameters)
-
 
     def plot_evaluate_res(self, cas_table=None, img_type='A', image_id=None, filename=None, n_images=5,
                           target='_label_', predicted_class=None, label_class=None, randomize=False,
