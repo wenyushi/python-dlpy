@@ -26,6 +26,7 @@ from dlpy.sequential import Sequential
 from dlpy.layers import InputLayer, Conv2d, Pooling, Dense, OutputLayer
 from dlpy.utils import caslibify
 from dlpy.model import VanillaSolver, Optimizer
+import json
 
 
 class TestLRScheduler(unittest.TestCase):
@@ -58,6 +59,12 @@ class TestLRScheduler(unittest.TestCase):
                 cls.data_dir = cls.data_dir[:-1]
             cls.data_dir += cls.server_sep
 
+        filename = os.path.join('datasources', 'sample_syntax_for_test.json')
+        project_path = os.path.dirname(os.path.abspath(__file__))
+        full_filename = os.path.join(project_path, filename)
+        with open(full_filename) as f:
+            cls.sample_syntax = json.load(f)
+
     @classmethod
     def tearDownClass(cls):
         # tear down tests
@@ -68,9 +75,13 @@ class TestLRScheduler(unittest.TestCase):
         del cls.s
         swat.reset_option()
 
+    def test_compatiable_syntax(self):
+        VanillaSolver(lr_scheduler = StepLR(1.0, 1.2, 30),
+                      learning_rate = 0.001, learning_rate_policy = 'fixed')
+
     def test_StepLR(self):
         lr_policy = StepLR(1.0, 1.2, 30)
-        print(lr_policy)
+        self.assertTrue(self.sample_syntax['StepLR'] == lr_policy)
 
     def test_CyclicLR(self):
         model1 = Sequential(self.s, model_table = 'Simple_CNN1')
@@ -90,8 +101,8 @@ class TestLRScheduler(unittest.TestCase):
         self.s.table.loadtable(caslib = caslib,
                                casout = {'name': 'eee', 'replace': True},
                                path = path)
-        solver = VanillaSolver(CyclicLR(self.s, 'eee', 4, 1.0, 0.001, 0.01))
-        # solver = VanillaSolver(FixedLR(0.1))
+        solver = VanillaSolver(lr_scheduler=CyclicLR(self.s, 'eee', 4, 1.0, 0.0000001, 0.01))
+        self.assertTrue(self.sample_syntax['CyclicLR'] == solver)
         optimizer = Optimizer(algorithm = solver, log_level = 3, max_epochs = 4, mini_batch_size = 2)
         r = model1.fit(data = 'eee', inputs = '_image_', target = '_label_', optimizer = optimizer, n_threads=2)
         if r.severity > 0:
@@ -118,7 +129,7 @@ class TestLRScheduler(unittest.TestCase):
                                casout = {'name': 'eee', 'replace': True},
                                path = path)
         solver = VanillaSolver(ReduceLROnPlateau(self.s, 0.1, 0.1))
-        # solver = VanillaSolver(FixedLR(0.1))
+        self.assertTrue(self.sample_syntax['ReduceLROnPlateau'] == solver)
         optimizer = Optimizer(algorithm = solver, log_level = 2, max_epochs = 4, mini_batch_size = 10)
         r = model1.fit(data='eee', inputs='_image_', target='_label_', optimizer=optimizer)
         if r.severity > 0:

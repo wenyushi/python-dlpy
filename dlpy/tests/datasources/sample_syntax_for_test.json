@@ -104,5 +104,8 @@
     {"name": "RNN1B2", "layer": {"dropout": 0.2, "reversed": false, "outputtype": "samelength", "rnntype": "gru", "n": 20, "type": "recurrent", "act":"auto"}, "sharedweights": null, "srclayers": ["RNN0B1", "RNN1B1"]},
     {"name": "RNN0B3", "layer": {"dropout": 0.2, "reversed": true, "outputtype": "samelength", "rnntype": "gru", "n": 30, "type": "recurrent", "act":"auto"}, "sharedweights": null, "srclayers": ["RNN0B2", "RNN1B2"]},
     {"name": "RNN1B3", "layer": {"dropout": 0.2, "reversed": false, "outputtype": "samelength", "rnntype": "gru", "n": 30, "type": "recurrent", "act":"auto"}, "sharedweights": null, "srclayers": ["RNN0B2", "RNN1B2"]}
-  ]
+  ],
+  "StepLR":{"learningratepolicy": "STEP", "learningrate": 1.0, "gamma": 1.2, "stepsize": 30, "power": 0.75},
+  "CyclicLR":{"uselocking": true, "learningrate": 1e-07, "gamma": 0.1, "stepsize": 10, "fcmplearningrate": "cyclic_lr", "method": "vanilla"},
+  "ReduceLROnPlateau":{"uselocking": true, "learningrate": 0.1, "gamma": 0.1, "stepsize": 10, "fcmplearningrate": "reduce_lr_on_plateau", "method": "vanilla"}
 }

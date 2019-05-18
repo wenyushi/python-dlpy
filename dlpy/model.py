@@ -2083,24 +2083,23 @@ class FeatureMaps(object):
         plt.show()
 
 
-class Solver(DLPyDict):
+class _Solver(DLPyDict):
     '''
     Solver object
 
     Parameters
     ----------
-    learning_rate : double, optional
-        Specifies the learning rate for the deep learning algorithm.
-    learning_rate_policy : string, optional
-        Specifies the learning rate policy for the deep learning algorithm.
-        Valid Values: FIXED, STEP, POLY, INV, MULTISTEP
-        Default: FIXED
-    gamma : double, optional
-        Specifies the gamma for the learning rate policy.
-    step_size : int, optional
-        Specifies the step size when the learning rate policy is set to STEP.
-    power : double, optional
-        Specifies the power for the learning rate policy.
+    lr_scheduler : LRScheduler, optional
+        Specifies learning rate policy
+        DLPy provides you with some predefined learning rate policies.
+        1. FixedLR
+        2. StepLR
+        3. MultiStepLR
+        4. PolynomialLR
+        5. ReduceLROnPlateau
+        6. CyclicLR
+        Besides, you can also customize your own learning rate policy.
+        You can find more examples at DLPy example folder.
     use_locking : bool, optional
         When it is false, the gradients are computed asynchronously with
         multiple threads.
@@ -2110,6 +2109,17 @@ class Solver(DLPyDict):
     clip_grad_min : double, optional
         Specifies the minimum gradient value. All gradients that are less
         than the specified value are set to the specified value.
+    learning_rate : double, optional
+        Specifies the learning rate for the deep learning algorithm.
+    learning_rate_policy : string, optional
+        Specifies the learning rate policy for the deep learning algorithm.
+        Valid Values: FIXED, STEP, POLY, INV, MULTISTEP
+    gamma : double, optional
+        Specifies the gamma for the learning rate policy.
+    step_size : int, optional
+        Specifies the step size when the learning rate policy is set to STEP.
+    power : double, optional
+        Specifies the power for the learning rate policy.
     steps : list-of-ints, optional
         specifies a list of epoch counts. When the current epoch matches one
         of the specified steps, the learning rate is multiplied by the value
@@ -2124,13 +2134,24 @@ class Solver(DLPyDict):
     :class:`Solver`
 
     '''
-    def __init__(self, lr_scheduler, use_locking=True, clip_grad_max=None, clip_grad_min=None):
-        if not isinstance(lr_scheduler, _LRScheduler):
-            raise TypeError('{} is not an LRScheduler'.format(type(lr_scheduler).__name__))
-        DLPyDict.__init__(self, use_locking=use_locking, clip_grad_max=clip_grad_max, clip_grad_min=clip_grad_min)
-        lr_scheduler = lr_scheduler or FixedLR()
-        for key, value in lr_scheduler.items():
-            self.__setitem__(key, value)
+    def __init__(self, lr_scheduler=None, use_locking=True, clip_grad_max=None, clip_grad_min=None,
+                 learning_rate=None, learning_rate_policy=None, gamma=None, step_size=None, power=None,
+                 steps=None, fcmp_learning_rate=None):
+        args_wrapped_in_lr_scheduler = ['learning_rate', 'learning_rate_policy', 'gamma', 'step_size',
+                                        'power', 'steps', 'fcmp_learning_rate']
+        DLPyDict.__init__(self, learning_rate=learning_rate, learning_rate_policy=learning_rate_policy,
+                          gamma=gamma, step_size=step_size, power=power, use_locking=use_locking,
+                          clip_grad_max=clip_grad_max, clip_grad_min=clip_grad_min, steps=steps,
+                          fcmp_learning_rate=fcmp_learning_rate)
+        if lr_scheduler is not None:
+            not_none_args = [i for i in args_wrapped_in_lr_scheduler if self.get(i) is not None]
+            if len(not_none_args) > 0:
+                print('The following argument(s) {} are overwritten by the according arguments '
+                      'specified in lr_scheduler.'.format(', '.join(not_none_args)))
+            if not isinstance(lr_scheduler, _LRScheduler):
+                raise TypeError('{} is not an LRScheduler'.format(type(lr_scheduler).__name__))
+            for key, value in lr_scheduler.items():
+                self.__setitem__(key, value)
 
     def set_method(self, method):
         '''
@@ -2161,24 +2182,23 @@ class Solver(DLPyDict):
         return super().__str__()
 
 
-class VanillaSolver(Solver):
+class VanillaSolver(_Solver):
     '''
     Vanilla solver object
 
     Parameters
     ----------
-    learning_rate : double, optional
-        Specifies the learning rate for the deep learning algorithm.
-    learning_rate_policy : string, optional
-        Specifies the learning rate policy for the deep learning algorithm.
-        Valid Values: FIXED, STEP, POLY, INV, MULTISTEP
-        Default: FIXED
-    gamma : double, optional
-        Specifies the gamma for the learning rate policy.
-    step_size : int, optional
-        Specifies the step size when the learning rate policy is set to STEP.
-    power : double, optional
-        Specifies the power for the learning rate policy.
+    lr_scheduler : LRScheduler, optional
+        Specifies learning rate policy
+        DLPy provides you with some predefined learning rate policies.
+        1. FixedLR
+        2. StepLR
+        3. MultiStepLR
+        4. PolynomialLR
+        5. ReduceLROnPlateau
+        6. CyclicLR
+        Besides, you can also customize your own learning rate policy.
+        You can find more examples at DLPy example folder.
     use_locking : bool, optional
         When it is false, the gradients are computed asynchronously with
         multiple threads.
@@ -2188,6 +2208,17 @@ class VanillaSolver(Solver):
     clip_grad_min : double, optional
         Specifies the minimum gradient value. All gradients that are less
         than the specified value are set to the specified value.
+    learning_rate : double, optional
+        Specifies the learning rate for the deep learning algorithm.
+    learning_rate_policy : string, optional
+        Specifies the learning rate policy for the deep learning algorithm.
+        Valid Values: FIXED, STEP, POLY, INV, MULTISTEP
+    gamma : double, optional
+        Specifies the gamma for the learning rate policy.
+    step_size : int, optional
+        Specifies the step size when the learning rate policy is set to STEP.
+    power : double, optional
+        Specifies the power for the learning rate policy.
     steps : list-of-ints, optional
         specifies a list of epoch counts. When the current epoch matches
         one of the specified steps, the learning rate is multiplied by the
@@ -2202,17 +2233,31 @@ class VanillaSolver(Solver):
     :class:`VanillaSolver`
 
     '''
-    def __init__(self, lr_scheduler, use_locking=True, clip_grad_max=None, clip_grad_min=None):
-        Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min)
+    def __init__(self, lr_scheduler=None, use_locking=True, clip_grad_max=None, clip_grad_min=None,
+                 learning_rate=None, learning_rate_policy=None, gamma=None, step_size=None, power=None,
+                 steps=None, fcmp_learning_rate=None):
+        _Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min,
+                         learning_rate, learning_rate_policy, gamma, step_size, power, steps, fcmp_learning_rate)
         self.set_method('vanilla')
 
 
-class MomentumSolver(Solver):
+class MomentumSolver(_Solver):
     '''
     Momentum solver object
 
     Parameters
     -----------
+    lr_scheduler : LRScheduler, optional
+        Specifies learning rate policy
+        DLPy provides you with some predefined learning rate policies.
+        1. FixedLR
+        2. StepLR
+        3. MultiStepLR
+        4. PolynomialLR
+        5. ReduceLROnPlateau
+        6. CyclicLR
+        Besides, you can also customize your own learning rate policy.
+        You can find more examples at DLPy example folder.
     momentum : double, optional
         Specifies the momentum for stochastic gradient descent.
     learning_rate : double, optional
@@ -2220,7 +2265,6 @@ class MomentumSolver(Solver):
     learning_rate_policy : string, optional
         Specifies the learning rate policy for the deep learning algorithm.
         Valid Values: FIXED, STEP, POLY, INV, MULTISTEP
-        Default: FIXED
     gamma : double, optional
         Specifies the gamma for the learning rate policy.
     step_size : int, optional
@@ -2250,36 +2294,38 @@ class MomentumSolver(Solver):
     :class:`MomentumSolver`
 
     '''
-    def __init__(self, lr_scheduler, use_locking=True, clip_grad_max=None, clip_grad_min=None, momentum=0.9):
-        Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min)
+    def __init__(self, lr_scheduler=None, use_locking=True, clip_grad_max=None, clip_grad_min=None, momentum=0.9,
+                 learning_rate=None, learning_rate_policy=None, gamma=None, step_size=None, power=None,
+                 steps=None, fcmp_learning_rate=None):
+        _Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min,
+                         learning_rate, learning_rate_policy, gamma, step_size, power, steps, fcmp_learning_rate)
         self.set_method('momentum')
         self.add_parameter('momentum', momentum)
 
 
-class AdamSolver(Solver):
+class AdamSolver(_Solver):
     '''
     Adam solver object
 
     Parameters
     ----------
+    lr_scheduler : LRScheduler, optional
+        Specifies learning rate policy
+        DLPy provides you with some predefined learning rate policies.
+        1. FixedLR
+        2. StepLR
+        3. MultiStepLR
+        4. PolynomialLR
+        5. ReduceLROnPlateau
+        6. CyclicLR
+        Besides, you can also customize your own learning rate policy.
+        You can find more examples at DLPy example folder.
     beta1 : double, optional
         Specifies the exponential decay rate for the first moment in
         the Adam learning algorithm.
     beta2 : double, optional
         Specifies the exponential decay rate for the second moment in
         the Adam learning algorithm.
-    learning_rate : double, optional
-        Specifies the learning rate for the deep learning algorithm.
-    learning_rate_policy : string, optional
-        Specifies the learning rate policy for the deep learning algorithm.
-        Valid Values: FIXED, STEP, POLY, INV, MULTISTEP
-        Default: FIXED
-    gamma : double, optional
-        Specifies the gamma for the learning rate policy.
-    step_size: int, optional
-        Specifies the step size when the learning rate policy is set to STEP.
-    power : double, optional
-        Specifies the power for the learning rate policy.
     use_locking : bool, optional
         When it is false, the gradients are computed asynchronously with
         multiple threads.
@@ -2289,6 +2335,17 @@ class AdamSolver(Solver):
     clip_grad_min : double, optional
         Specifies the minimum gradient value. All gradients that are less
         than the specified value are set to the specified value.
+    learning_rate : double, optional
+        Specifies the learning rate for the deep learning algorithm.
+    learning_rate_policy : string, optional
+        Specifies the learning rate policy for the deep learning algorithm.
+        Valid Values: FIXED, STEP, POLY, INV, MULTISTEP
+    gamma : double, optional
+        Specifies the gamma for the learning rate policy.
+    step_size: int, optional
+        Specifies the step size when the learning rate policy is set to STEP.
+    power : double, optional
+        Specifies the power for the learning rate policy.
     steps : list-of-ints, optional
         specifies a list of epoch counts. When the current epoch matches
         one of the specified steps, the learning rate is multiplied by the
@@ -2303,14 +2360,17 @@ class AdamSolver(Solver):
     :class:`AdamSolver`
 
     '''
-    def __init__(self, lr_scheduler, beta1=0.9, beta2=0.999, use_locking=True, clip_grad_max=None, clip_grad_min=None):
-        Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min)
+    def __init__(self, lr_scheduler=None, beta1=0.9, beta2=0.999, use_locking=True, clip_grad_max=None, clip_grad_min=None,
+                 learning_rate=None, learning_rate_policy=None, gamma=None, step_size=None, power=None,
+                 steps=None, fcmp_learning_rate=None):
+        _Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min,
+                         learning_rate, learning_rate_policy, gamma, step_size, power, steps, fcmp_learning_rate)
         self.set_method('adam')
         self.add_parameter('beta1', beta1)
         self.add_parameter('beta2', beta2)
 
 
-class LBFGSolver(Solver):
+class LBFGSolver(_Solver):
     '''
     LBFG solver object
 
@@ -2331,18 +2391,17 @@ class LBFGSolver(Solver):
         the maxEpochs= option.
     backtrack_ratio : double
         Specifies the backtrack ratio of line search iterations for L-BFGS solver.
-    learning_rate : double, optional
-        Specifies the learning rate for the deep learning algorithm.
-    learning_rate_policy : string, optional
-        Specifies the learning rate policy for the deep learning algorithm.
-        Valid Values: FIXED, STEP, POLY, INV, MULTISTEP
-        Default: FIXED
-    gamma : double, optional
-        Specifies the gamma for the learning rate policy.
-    step_size : int, optional
-        Specifies the step size when the learning rate policy is set to STEP.
-    power : double, optional
-        Specifies the power for the learning rate policy.
+    lr_scheduler : LRScheduler, optional
+        Specifies learning rate policy
+        DLPy provides you with some predefined learning rate policies.
+        1. FixedLR
+        2. StepLR
+        3. MultiStepLR
+        4. PolynomialLR
+        5. ReduceLROnPlateau
+        6. CyclicLR
+        Besides, you can also customize your own learning rate policy.
+        You can find more examples at DLPy example folder.
     use_locking : bool, optional
         When it is false, the gradients are computed asynchronously with
         multiple threads.
@@ -2352,6 +2411,17 @@ class LBFGSolver(Solver):
     clip_grad_min : double, optional
         Specifies the minimum gradient value. All gradients that are less
         than the specified value are set to the specified value.
+    learning_rate : double, optional
+        Specifies the learning rate for the deep learning algorithm.
+    learning_rate_policy : string, optional
+        Specifies the learning rate policy for the deep learning algorithm.
+        Valid Values: FIXED, STEP, POLY, INV, MULTISTEP
+    gamma : double, optional
+        Specifies the gamma for the learning rate policy.
+    step_size : int, optional
+        Specifies the step size when the learning rate policy is set to STEP.
+    power : double, optional
+        Specifies the power for the learning rate policy.
     steps : list-of-ints, optional
         specifies a list of epoch counts. When the current epoch matches one
         of the specified steps, the learning rate is multiplied by the value
@@ -2366,9 +2436,11 @@ class LBFGSolver(Solver):
     :class:`LBFGSolver`
 
     '''
-    def __init__(self, lr_scheduler, m, max_line_search_iters, max_iters, backtrack_ratio, use_locking=True,
-                 clip_grad_max=None, clip_grad_min=None):
-        Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min)
+    def __init__(self, m, max_line_search_iters, max_iters, backtrack_ratio, lr_scheduler=None, use_locking=True,
+                 clip_grad_max=None, clip_grad_min=None, learning_rate=None, learning_rate_policy=None,
+                 gamma=None, step_size=None, power=None, steps=None, fcmp_learning_rate=None):
+        _Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min,
+                         learning_rate, learning_rate_policy, gamma, step_size, power, steps, fcmp_learning_rate)
         self.set_method('lbfg')
         self.add_parameters('m', m)
         self.add_parameters('maxlinesearchiters', max_line_search_iters)
@@ -2376,26 +2448,25 @@ class LBFGSolver(Solver):
         self.add_parameters('backtrackratio', backtrack_ratio)
 
 
-class NatGradSolver(Solver):
+class NatGradSolver(_Solver):
     '''
     Natural gradient solver object
 
     Parameters
     ----------
+    lr_scheduler : LRScheduler, optional
+        Specifies learning rate policy
+        DLPy provides you with some predefined learning rate policies.
+        1. FixedLR
+        2. StepLR
+        3. MultiStepLR
+        4. PolynomialLR
+        5. ReduceLROnPlateau
+        6. CyclicLR
+        Besides, you can also customize your own learning rate policy.
+        You can find more examples at DLPy example folder.
     approximation_type : int, optional
         Specifies the approximate natural gradient type.
-    learning_rate : double, optional
-        Specifies the learning rate for the deep learning algorithm.
-    learning_rate_policy : string, optional
-        Specifies the learning rate policy for the deep learning algorithm.
-        Valid Values: FIXED, STEP, POLY, INV, MULTISTEP
-        Default: FIXED
-    gamma : double, optional
-        Specifies the gamma for the learning rate policy.
-    step_size : int, optional
-        Specifies the step size when the learning rate policy is set to STEP.
-    power : double, optional
-        Specifies the power for the learning rate policy.
     use_locking : bool, optional
         When it is false, the gradients are computed asynchronously with
         multiple threads.
@@ -2405,6 +2476,17 @@ class NatGradSolver(Solver):
     clip_grad_min : double, optional
         Specifies the minimum gradient value. All gradients that are less
         than the specified value are set to the specified value.
+    learning_rate : double, optional
+        Specifies the learning rate for the deep learning algorithm.
+    learning_rate_policy : string, optional
+        Specifies the learning rate policy for the deep learning algorithm.
+        Valid Values: FIXED, STEP, POLY, INV, MULTISTEP
+    gamma : double, optional
+        Specifies the gamma for the learning rate policy.
+    step_size : int, optional
+        Specifies the step size when the learning rate policy is set to STEP.
+    power : double, optional
+        Specifies the power for the learning rate policy.
     steps : list-of-ints, optional
         specifies a list of epoch counts. When the current epoch matches one
         of the specified steps, the learning rate is multiplied by the value
@@ -2419,8 +2501,11 @@ class NatGradSolver(Solver):
     :class:`NatGradSolver`
 
     '''
-    def __init__(self, lr_scheduler, approximation_type=1, use_locking=True, clip_grad_max=None, clip_grad_min=None):
-        Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min)
+    def __init__(self, lr_scheduler=None, approximation_type=1, use_locking=True, clip_grad_max=None,
+                 clip_grad_min=None, learning_rate=None, learning_rate_policy=None,
+                 gamma=None, step_size=None, power=None, steps=None, fcmp_learning_rate=None):
+        _Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min, learning_rate,
+                         learning_rate_policy, gamma, step_size, power, steps, fcmp_learning_rate)
         self.set_method('natgrad')
         self.add_parameter('approximationtype', approximation_type)
 

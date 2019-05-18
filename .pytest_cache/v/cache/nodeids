@@ -1,20 +1,3 @@
 [
-  "dlpy/tests/test_sequential.py::TestSequential::test_1",
-  "dlpy/tests/test_sequential.py::TestSequential::test_11",
-  "dlpy/tests/test_sequential.py::TestSequential::test_2",
-  "dlpy/tests/test_sequential.py::TestSequential::test_22",
-  "dlpy/tests/test_sequential.py::TestSequential::test_3",
-  "dlpy/tests/test_sequential.py::TestSequential::test_4",
-  "dlpy/tests/test_sequential.py::TestSequential::test_5",
-  "dlpy/tests/test_sequential.py::TestSequential::test_6",
-  "dlpy/tests/test_sequential.py::TestSequential::test_FCMP",
-  "dlpy/tests/test_sequential.py::TestSequential::test_new_bidirectional1",
-  "dlpy/tests/test_sequential.py::TestSequential::test_new_bidirectional2",
-  "dlpy/tests/test_sequential.py::TestSequential::test_new_bidirectional3",
-  "dlpy/tests/test_sequential.py::TestSequential::test_new_bidirectional4",
-  "dlpy/tests/test_sequential.py::TestSequential::test_new_bidirectional5",
-  "dlpy/tests/test_sequential.py::TestSequential::test_new_bidirectional6",
-  "dlpy/tests/test_sequential.py::TestSequential::test_simple_cnn_seq1",
-  "dlpy/tests/test_sequential.py::TestSequential::test_simple_cnn_seq2",
-  "dlpy/tests/test_sequential.py::TestSequential::test_unet"
+  "dlpy/tests/test_lr_scheduler.py::TestLRScheduler::test_compatiable_syntax"
 ]

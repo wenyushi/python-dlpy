@@ -21,8 +21,8 @@ from dlpy.utils import DLPyDict
 
 
 class _LRScheduler(DLPyDict):
-    def __init__(self, learning_rate_policy='FIXED', learning_rate=0.001, gamma=None, steps=None, step_size=None,
-                 power=0.75, fcmp_learning_rate=None):
+    def __init__(self, learning_rate_policy=None, learning_rate=None, gamma=None, steps=None, step_size=None,
+                 power=None, fcmp_learning_rate=None):
         super(_LRScheduler, self).__init__(learning_rate_policy=learning_rate_policy, learning_rate=learning_rate, gamma=gamma,
                                            steps=steps, step_size=step_size, power=power, fcmp_learning_rate=fcmp_learning_rate)
 
