@@ -11,6 +11,7 @@
   "dlpy/tests/test_model.py::TestModel::test_get_feature_maps": true,
   "dlpy/tests/test_model.py::TestModel::test_heat_map_analysis2": true,
   "dlpy/tests/test_model.py::TestModel::test_image_table2": true,
+  "dlpy/tests/test_model.py::TestModel::test_model2": true,
   "dlpy/tests/test_model.py::TestModel::test_model20": true,
   "dlpy/tests/test_network.py::TestNetwork::test_lack_inputs_outputs": true
 }
