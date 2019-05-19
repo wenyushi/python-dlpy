@@ -1832,7 +1832,7 @@ class Model(Network):
         image_id_list = temp_table['_parentId_'].unique().tolist()
         n_masks = len(temp_table['_id_'].unique())
 
-        prob_tensor = np.empty((output_width, output_height, n_masks))
+        prob_tensor = np.empty((output_height, output_width, n_masks))
         prob_tensor[:] = np.nan
         model_explain_table = dict()
         count_for_subject = dict()
@@ -1902,25 +1902,23 @@ class Model(Network):
                 img = output_table['_image_'][im_idx]
                 heat_map = output_table['heat_map'][im_idx]
                 img_size = heat_map.shape
-                extent = [0, img_size[0], 0, img_size[1]]
+                # extent = [0, img_size[0], 0, img_size[1]]
 
                 vmin = heat_map.min()
                 vmax = heat_map.max()
 
-                axs[im_idx][0].imshow(img, extent=extent)
+                axs[im_idx][0].imshow(img)
                 axs[im_idx][0].axis('off')
                 axs[im_idx][0].set_title('Original Image: {}'.format(label))
 
                 color_bar = axs[im_idx][2].imshow(heat_map, vmax=vmax, vmin=vmin,
-                                                  interpolation='none',
-                                                  extent=extent, cmap='jet_r')
+                                                  interpolation='none',  cmap='jet_r')
                 axs[im_idx][2].axis('off')
                 axs[im_idx][2].set_title('Heat Map')
 
-                axs[im_idx][1].imshow(img, extent=extent)
+                axs[im_idx][1].imshow(img)
                 axs[im_idx][1].imshow(heat_map, vmax=vmax, vmin=vmin,
-                                      interpolation='none', alpha=0.5,
-                                      extent=extent, cmap='jet_r')
+                                      interpolation='none', alpha=0.5, cmap='jet_r')
                 axs[im_idx][1].axis('off')
                 axs[im_idx][1].set_title('Overlayed Image')
 
@@ -1951,7 +1949,7 @@ class Model(Network):
 
         return output_table
 
-    def plot_heat_map(self, idx=0, alpha=.2):
+    def plot_heat_map(self, idx=0, alpha=.2, fig_size=(12, 4)):
         """
         Display the heat maps analysis results
 
@@ -1974,23 +1972,21 @@ class Model(Network):
         heat_map = self.model_explain_table['heat_map'][idx]
 
         img_size = heat_map.shape
-        extent = [0, img_size[0], 0, img_size[1]]
+        # extent = [0, img_size[0], 0, img_size[1]]
 
         vmin = heat_map.min()
         vmax = heat_map.max()
-        fig, (ax0, ax2, ax1) = plt.subplots(ncols=3, figsize=(12, 4))
-        ax0.imshow(img, extent=extent)
+        fig, (ax0, ax2, ax1) = plt.subplots(ncols=3, figsize=fig_size)
+        ax0.imshow(img)
         ax0.axis('off')
         ax0.set_title('Original Image: {}'.format(label))
 
-        color_bar = ax1.imshow(heat_map, vmax=vmax, vmin=vmin,
-                               interpolation='none', extent=extent, cmap='jet_r')
+        color_bar = ax1.imshow(heat_map, vmax=vmax, vmin=vmin, interpolation='none',cmap='jet_r')
         ax1.axis('off')
         ax1.set_title('Heat Map')
 
-        ax2.imshow(img, extent=extent)
-        ax2.imshow(heat_map, vmax=vmax, vmin=vmin, interpolation='none',
-                   alpha=alpha, extent=extent, cmap='jet_r')
+        ax2.imshow(img)
+        ax2.imshow(heat_map, vmax=vmax, vmin=vmin, interpolation='none', alpha=alpha, cmap='jet_r')
         ax2.axis('off')
         ax2.set_title('Overlayed Image')
 
@@ -2855,6 +2851,6 @@ class DataSpec(DLPyDict):
         A dictionary of data spec parameters.
 
     """
-    def __init__(self, type_, layer, data, data_layer=None, nominals=None, numeric_nominal_parms=None, loss_scale_factor=1):
+    def __init__(self, type_, layer, data=None, data_layer=None, nominals=None, numeric_nominal_parms=None, loss_scale_factor=1):
         DLPyDict.__init__(self, type=type_, layer=layer, data_layer=data_layer, data=data, nominals=nominals,
                           numeric_nominal_parms=numeric_nominal_parms, loss_scale_factor=loss_scale_factor)
