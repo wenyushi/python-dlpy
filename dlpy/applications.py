@@ -863,7 +863,7 @@ def ResNet18_SAS(conn, model_table='RESNET18_SAS', batch_norm_first=True, n_clas
 
     # Bottom Layers
     pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
-    model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
+    model.add(GlobalAveragePooling2D())
 
     model.add(OutputLayer(act='softmax', n=n_classes))
 
@@ -966,7 +966,7 @@ def ResNet18_Caffe(conn, model_table='RESNET18_CAFFE', batch_norm_first=False, n
 
     # Bottom Layers
     pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
-    model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
+    model.add(GlobalAveragePooling2D())
 
     model.add(OutputLayer(act='softmax', n=n_classes))
 
@@ -1434,7 +1434,7 @@ def ResNet50_Caffe(conn, model_table='RESNET50_CAFFE',  n_classes=1000, n_channe
             return model
 
 
-def ResNet101_SAS(conn, model_table='RESNET101_SAS',  n_classes=1000, n_channels=3, width=224, height=224, scale=1,
+def ResNet101_SAS(conn, model_table='RESNET101_SAS',  n_classes=1000,  n_channels=3, width=224, height=224, scale=1,
                   batch_norm_first=True, random_flip='none', random_crop='none', offsets=(103.939, 116.779, 123.68)):
     '''
     Generates a deep learning model with the ResNet101 architecture.
