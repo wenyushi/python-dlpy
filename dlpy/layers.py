@@ -828,8 +828,8 @@ class Pooling(Layer):
         if width is None and height is None:
             parameters['width'] = 2
             parameters['height'] = 2
-        elif width == 0 or height == 0:
-            raise DLPyError('Neither width nor height can be 0')
+        # elif width == 0 or height == 0:
+        #     raise DLPyError('Neither width nor height can be 0')
         elif width is None:
             parameters['width'] = height
         elif height is None:

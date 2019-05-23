@@ -965,7 +965,7 @@ def ResNet18_Caffe(conn, model_table='RESNET18_CAFFE', batch_norm_first=False, n
                                      batch_norm_first=batch_norm_first, conv_short_cut=conv_short_cut))
 
     # Bottom Layers
-    pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
+    # pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
     model.add(GlobalAveragePooling2D())
 
     model.add(OutputLayer(act='softmax', n=n_classes))
