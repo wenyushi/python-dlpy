@@ -765,7 +765,7 @@ def VGG19(conn, model_table='VGG19', n_classes=1000, n_channels=3, width=224, he
 
 
 def ResNet18_SAS(conn, model_table='RESNET18_SAS', batch_norm_first=True, n_classes=1000, n_channels=3, width=224,
-                 height=224, scale=1, random_flip='none', random_crop='none', offsets=(103.939, 116.779, 123.68)):
+                 height=224, scale=1, random_flip='none', random_crop='none', random_mutation='none', offsets=(103.939, 116.779, 123.68)):
     '''
     Generates a deep learning model with the ResNet18 architecture.
 
@@ -812,6 +812,10 @@ def ResNet18_SAS(conn, model_table='RESNET18_SAS', batch_norm_first=True, n_clas
         that are larger than those sizes are cropped.
         Valid Values: 'none', 'unique'
         Default: 'none'
+    random_mutation : string, optional
+        Specifies how to apply data augmentations/mutations to the data in the input layer.
+        Valid Values: 'none', 'random'
+        Default: 'NONE'
     offsets : double or iter-of-doubles, optional
         Specifies an offset for each channel in the input data. The final input
         data is set after applying scaling and subtracting the specified offsets.
@@ -831,7 +835,7 @@ def ResNet18_SAS(conn, model_table='RESNET18_SAS', batch_norm_first=True, n_clas
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, scale=scale, offsets=offsets,
-                         random_flip=random_flip, random_crop=random_crop))
+                         random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation))
 
     # Top layers
     model.add(Conv2d(64, 7, act='identity', include_bias=False, stride=2))
@@ -867,7 +871,7 @@ def ResNet18_SAS(conn, model_table='RESNET18_SAS', batch_norm_first=True, n_clas
 
 
 def ResNet18_Caffe(conn, model_table='RESNET18_CAFFE', batch_norm_first=False, n_classes=1000, n_channels=3, width=224,
-                   height=224, scale=1, random_flip='none', random_crop='none', offsets=None):
+                   height=224, scale=1, random_flip='none', random_crop='none', random_mutation='none', offsets=None):
     '''
     Generates a deep learning model with the ResNet18 architecture with convolution shortcut.
 
@@ -912,6 +916,10 @@ def ResNet18_Caffe(conn, model_table='RESNET18_CAFFE', batch_norm_first=False, n
         that are larger than those sizes are cropped.
         Valid Values: 'none', 'unique'
         Default: 'none'
+    random_mutation : string, optional
+        Specifies how to apply data augmentations/mutations to the data in the input layer.
+        Valid Values: 'none', 'random'
+        Default: 'NONE'
     offsets : double or iter-of-doubles, optional
         Specifies an offset for each channel in the input data. The final input
         data is set after applying scaling and subtracting the specified offsets.
@@ -930,7 +938,7 @@ def ResNet18_Caffe(conn, model_table='RESNET18_CAFFE', batch_norm_first=False, n
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, scale=scale, offsets=offsets,
-                         random_flip=random_flip, random_crop=random_crop))
+                         random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation))
     # Top layers
     model.add(Conv2d(64, 7, act='identity', include_bias=False, stride=2))
     model.add(BN(act='relu'))
