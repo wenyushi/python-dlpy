@@ -877,8 +877,9 @@ class Model(Network):
 
         return results
 
-    def predict(self, data, text_parms=None, layer_out=None, layers=None, gpu=None, buffer_size=10,
-                mini_batch_buf_size=None, top_probs=None, use_best_weights=False, n_threads=None, log_level=0):
+    def predict(self, data, text_parms=None, layer_out=None, layers=None, layer_image_type=None, gpu=None,
+                buffer_size=10, mini_batch_buf_size=None, top_probs=None, use_best_weights=False,
+                n_threads=None, log_level=0):
         """
         Evaluate the deep learning model on a specified validation data set
 
@@ -899,6 +900,12 @@ class Model(Network):
         layers : list of strings
             Specifies the names of the layers to include in the output
             layers table.
+        layer_image_type : string, optional
+            Specifies the image type to store in the output layers table.
+            JPG means a compressed image (e.g, jpg, png, and tiff)
+            WIDE means a pixel per column
+            Default: jpg
+            Valid Values: JPG, WIDE
         gpu : :class:`Gpu`, optional
             When specified, the action uses graphical processing
             unit hardware. The simplest way to use GPU processing is
@@ -968,17 +975,17 @@ class Model(Network):
             print('NOTE: Using the weights providing the smallest loss error.')
             res = self.score(table=input_table, model=self.model_table, init_weights=self.best_weights,
                              copy_vars=copy_vars, casout=dict(replace=True, name=valid_res_tbl), encode_name=en,
-                             text_parms=text_parms, layer_out=lo, layers=layers, gpu=gpu,
-                             mini_batch_buf_size=mini_batch_buf_size, top_probs=top_probs, buffer_size=buffer_size,
-                             n_threads=n_threads, log_level=log_level)
+                             text_parms=text_parms, layer_out=lo, layers=layers, layer_image_type=layer_image_type,
+                             gpu=gpu, mini_batch_buf_size=mini_batch_buf_size, top_probs=top_probs,
+                             buffer_size=buffer_size, n_threads=n_threads, log_level=log_level)
             self.valid_res_tbl = self.conn.CASTable(valid_res_tbl)
             return res
         else:
             res = self.score(table=input_table, model=self.model_table, init_weights=self.model_weights,
                              copy_vars=copy_vars, casout=dict(replace=True, name=valid_res_tbl), encode_name=en,
-                             text_parms=text_parms, layer_out=lo, layers=layers, gpu=gpu,
-                             mini_batch_buf_size=mini_batch_buf_size, top_probs=top_probs, buffer_size=buffer_size,
-                             n_threads=n_threads, log_level=log_level)
+                             text_parms=text_parms, layer_out=lo, layers=layers, layer_image_type=layer_image_type,
+                             gpu=gpu, mini_batch_buf_size=mini_batch_buf_size, top_probs=top_probs,
+                             buffer_size=buffer_size, n_threads=n_threads, log_level=log_level)
             self.valid_res_tbl = self.conn.CASTable(valid_res_tbl)
             return res
 

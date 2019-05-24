@@ -1952,11 +1952,11 @@ def parameter_2d(param1, param2, param3, default_value):
             return (param2, param3)
 
 
-def layer_out_to_arrays(layer_out_table, idx=0):
+def layer_out_to_arrays(conn, layer_out_table, idx=0):
     # only support wide format
     res = []
-    layer_out_df = s.fetch(layer_out_table, from_=idx, to=idx+1, sastypes=False).Fetch
-    array_cols = [i for i in s.columninfo('layer_out').ColumnInfo.Column.values if i.startswith('_LayerAct_')]
+    layer_out_df = conn.fetch(layer_out_table, from_=idx, to=idx+1, sastypes=False).Fetch
+    array_cols = [i for i in conn.columninfo(layer_out_table).ColumnInfo.Column.values if i.startswith('_LayerAct_')]
     layer_id = list(set([col.split('_')[2] for col in array_cols])) # ['', 'LayerAct', '20', '0', '0', '1', '']
     for l in layer_id:
         layer_cols = [i for i in array_cols if i.startswith('_LayerAct_'+str(l))]
