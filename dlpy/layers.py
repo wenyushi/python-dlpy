@@ -2272,6 +2272,45 @@ class CLoss(Layer):
         return 0
 
 
+class Clustering(Layer):
+    type = 'cluster'
+    type_label = 'cluster'
+    type_desc = 'cluster layer'
+    can_be_last_layer = True
+    number_of_instances = 0
+
+    def __init__(self, n_clusters, name=None, alpha=1.0, cluster_error='KL', src_layers=None, **kwargs):
+
+        if not __dev__ and len(kwargs) > 0:
+            raise DLPyError('**kwargs can be used only in development mode.')
+
+        parameters = locals()
+        parameters = _unpack_config(parameters)
+        # _clean_parameters(parameters)
+        Layer.__init__(self, name, parameters, src_layers)
+        self._output_size = None
+        self.color_code = get_color(self.type)
+
+    @property
+    def kernel_size(self):
+        return None
+
+    @property
+    def num_weights(self):
+        return 0
+
+    @property
+    def output_size(self):
+        # TODO
+        if self._output_size is None:
+            self._output_size = self.src_layers[0].output_size
+        return self._output_size
+
+    @property
+    def num_bias(self):
+        return 0
+
+
 def _clean_input_parameters(parameters):
     del parameters['self']
     del parameters['name']
