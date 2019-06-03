@@ -190,7 +190,7 @@ class Layer(object):
     def __call__(self, inputs):
         layer_type = self.__class__.__name__
         if isinstance(inputs, list):
-            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale', 'CLoss',
+            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale', 'EmbeddingLoss',
                                                       'Dense', 'Model', 'OutputLayer', 'ROIPooling', 'FastRCNN']:
                 raise DLPyError('The input of {} should have only one layer.'.format(layer_type))
         else:
@@ -307,10 +307,12 @@ class Layer(object):
         if self.type == 'input':
             return dict(name=self.name, layer=new_params)
         elif self.type == 'transconvo':
-            if 'outputsize' in new_params:
-                del new_params['outputsize']
-        return dict(name = self.name, layer = new_params, sharedweights = self.shared_weights,
-                    srclayers = [item.name for item in self.src_layers])
+            new_params.pop('outputsize', None)
+        if self.shared_weights is None:
+            return dict(name = self.name, layer = new_params, srclayers = [item.name for item in self.src_layers])
+        else:
+            return dict(name = self.name, layer = new_params, sharedweights = self.shared_weights,
+                        srclayers = [item.name for item in self.src_layers])
 
     @property
     def summary(self):
@@ -516,7 +518,7 @@ class _Conv(Layer):
 
     Returns
     -------
-    :class:`Conv2d`
+    :class:`_Conv`
 
     '''
 
@@ -548,6 +550,63 @@ class _Conv(Layer):
 
 
 class Conv2d(_Conv):
+    '''
+    Convolution layer in 2D
+
+    Parameters
+    ----------
+
+    n_filters : int
+        Specifies the number of filters for the layer.
+    width : int
+        Specifies the width of the kernel.
+    height : int
+        Specifies the height of the kernel.
+    stride : int, optional
+        Specifies the step size for the moving window of the kernel over the input data.
+    name : string, optional
+        Specifies the name of the convolution layer.
+    stride_horizontal : int, optional
+        Specifies the horizontal stride.
+    stride_vertical : int, optional
+        Specifies the vertical stride.
+    padding : int, optional
+        Specifies the padding size, assuming equal padding vertically and horizontally.
+    padding_width : int, optional
+        Specifies the length of the horizontal padding.
+    padding_height : int, optional
+        Specifies the length of the vertical padding.
+    act : string, optional
+        Specifies the activation function.
+        Valid Values: AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP
+        Default: AUTO
+    fcmp_act : string, optional
+        Specifies the FCMP activation function for the layer.
+    init : string, optional
+        Specifies the initialization scheme for the layer.
+        Valid Values: XAVIER, UNIFORM, NORMAL, CAUCHY, XAVIER1, XAVIER2, MSRA, MSRA1, MSRA2
+        Default: XAVIER
+    std : float, optional
+        Specifies the standard deviation value when the ``init`` parameter is set to NORMAL.
+    mean : float, optional
+        Specifies the mean value when the ``init`` parameter is set to NORMAL.
+    truncation_factor : float, optional
+        Specifies the truncation threshold (truncationFactor x std), when the ``init`` parameter is set to NORMAL
+    init_bias : float, optional
+        Specifies the initial bias for the layer.
+    dropout : float, optional
+        Specifies the dropout rate.
+        Default: 0
+    include_bias : bool, optional
+        Includes bias neurons (default).
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`Conv2d`
+
+    '''
     type = 'convo'
     type_label = 'Convo.'
     type_desc = 'Convolution layer'
@@ -603,6 +662,65 @@ class Conv2d(_Conv):
 
 
 class GroupConv2d(Conv2d):
+    '''
+    Group Convolution layer in 2D
+
+    Parameters
+    ----------
+
+    n_filters : int
+        Specifies the number of filters for the layer.
+    n_groups : int
+        Specifies the number of groups for the layer.
+    width : int
+        Specifies the width of the kernel.
+    height : int
+        Specifies the height of the kernel.
+    stride : int, optional
+        Specifies the step size for the moving window of the kernel over the input data.
+    name : string, optional
+        Specifies the name of the convolution layer.
+    stride_horizontal : int, optional
+        Specifies the horizontal stride.
+    stride_vertical : int, optional
+        Specifies the vertical stride.
+    padding : int, optional
+        Specifies the padding size, assuming equal padding vertically and horizontally.
+    padding_width : int, optional
+        Specifies the length of the horizontal padding.
+    padding_height : int, optional
+        Specifies the length of the vertical padding.
+    act : string, optional
+        Specifies the activation function.
+        Valid Values: AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP
+        Default: AUTO
+    fcmp_act : string, optional
+        Specifies the FCMP activation function for the layer.
+    init : string, optional
+        Specifies the initialization scheme for the layer.
+        Valid Values: XAVIER, UNIFORM, NORMAL, CAUCHY, XAVIER1, XAVIER2, MSRA, MSRA1, MSRA2
+        Default: XAVIER
+    std : float, optional
+        Specifies the standard deviation value when the ``init`` parameter is set to NORMAL.
+    mean : float, optional
+        Specifies the mean value when the ``init`` parameter is set to NORMAL.
+    truncation_factor : float, optional
+        Specifies the truncation threshold (truncationFactor x std), when the ``init`` parameter is set to NORMAL
+    init_bias : float, optional
+        Specifies the initial bias for the layer.
+    dropout : float, optional
+        Specifies the dropout rate.
+        Default: 0
+    include_bias : bool, optional
+        Includes bias neurons (default).
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`GroupConv2d`
+
+    '''
     type = 'groupconvo'
     type_label = 'GroupConvo.'
     type_desc = 'Group convolution layer'
@@ -629,10 +747,11 @@ class GroupConv2d(Conv2d):
             # calculate output according to specified padding
             # calculate output according to specified padding
             if self.padding != (None, None):
-                out_h = (self.src_layers[0].output_size[0] - self.config['height'] + 2 * self.padding[0]) // \
-                        self.stride[0] + 1
-                out_w = (self.src_layers[0].output_size[1] - self.config['width'] + 2 * self.padding[1]) // self.stride[
-                    1] + 1
+                out_h = ((self.src_layers[0].output_size[0] - self.config['height'] + 2 * self.padding[0]) //
+                         self.stride[0] + 1)
+                out_w = ((self.src_layers[0].output_size[1] - self.config['width'] + 2 * self.padding[1]) //
+                         self.stride[1] + 1)
+
             else:
                 import math
                 # same padding
@@ -665,47 +784,92 @@ class GroupConv2d(Conv2d):
 
 class Conv2DTranspose(Conv2d):
     """
-    TODO:
-    Transconvo layer
+    Transpose Convolution layer in 2D
 
     Parameters
     ----------
+    n_filters : int
+        Specifies the number of filters for the layer.
+    width : int
+        Specifies the width of the kernel.
+    height : int
+        Specifies the height of the kernel.
+    output_size : tuple
+        Specifies the shape of output. 3D tensor with shape: (n_filters, new_rows, new_cols)
+    stride : int, optional
+        Specifies the step size for the moving window of the kernel over the input data.
     name : string, optional
-        Specifies the name of the layer.
+        Specifies the name of the convolution layer.
+    stride_horizontal : int, optional
+        Specifies the horizontal stride.
+    stride_vertical : int, optional
+        Specifies the vertical stride.
+    padding : int, optional
+        Specifies the padding size, assuming equal padding vertically and horizontally.
+    padding_width : int, optional
+        Specifies the length of the horizontal padding.
+    padding_height : int, optional
+        Specifies the length of the vertical padding.
     act : string, optional
-        | Specifies the activation function.
-        | possible values: [ AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP ]
-        | default: AUTO
+        Specifies the activation function.
+        Valid Values: AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP
+        Default: AUTO
     fcmp_act : string, optional
         Specifies the FCMP activation function for the layer.
-    height : int, required
-        Specifies the height of the input data. By default the height is determined automatically
-        when the model training begins.
-    width : int, required
-        Specifies the width of the input data. By default the width is determined automatically
-        when the model training begins.
-    depth : int, required
-        Specifies the depth of the feature maps.
-    src_layers : iterable Layer, optional
+    init : string, optional
+        Specifies the initialization scheme for the layer.
+        Valid Values: XAVIER, UNIFORM, NORMAL, CAUCHY, XAVIER1, XAVIER2, MSRA, MSRA1, MSRA2
+        Default: XAVIER
+    mean : float, optional
+        Specifies the mean value when the ``init`` parameter is set to NORMAL.
+    std : float, optional
+        Specifies the standard deviation value when the ``init`` parameter is set to NORMAL.
+    output_padding : int
+        Specifies the number of pixels to add to the right and bottom sides of the input to adjust the output shape.
+        This parameter is used to resolve ambiguity that might be introduced when stride is larger than 1.
+        If the input shape is 32x32, kernel size is 3x3, and stride is 2 on both sides, and padding is 1 on both sides,
+        then the output shape is 63x63. Setting the output_paddings to 1 on both sides changes
+        the output shape to 64x64.
+    output_padding_height : int
+        Specifies the number of pixels to be added to the bottom side of the input to adjust the output shape.
+        This parameter is used to resolve ambiguity that might be introduced when the stride is larger than 1.
+        If the input shape is 32x32, kernel size is 3x3, stride is 2 on both sides, and padding is 1 on both sides,
+        then the output shape is 63x63. Setting output_paddings to 1 on both sides changes the output shape to 64x64.
+    output_padding_width : int
+        specifies the number of pixels to add to the right side of the input to adjust the output shape.
+        This parameter is used to resolve ambiguity that might be introduced when stride is larger than 1.
+        If the input shape is 32x32, kernel size is 3x3, stride is 2 on both sides, and padding is 1 on both sides,
+        then the output shape is 63x63. Setting the outputPaddings to 1 on both sides changes the output shape to 64x64.
+    truncation_factor : float, optional
+        Specifies the truncation threshold (truncationFactor x std), when the ``init`` parameter is set to NORMAL
+    init_bias : float, optional
+        Specifies the initial bias for the layer.
+    dropout : float, optional
+        Specifies the dropout rate.
+        Default: 0
+    include_bias : bool, optional
+        Includes bias neurons (default).
+    src_layers : iter-of-Layers, optional
         Specifies the layers directed to this layer.
+
 
     Returns
     -------
-    :class:`Reshape`
-    """
+    :class:`Conv2DTranspose`
 
+    """
     type = 'transconvo'
     type_label = 'Transconvo'
     type_desc = 'Transconvo layer'
     can_be_last_layer = False
     number_of_instances = 0
 
-    def __init__(self, n_filters, height=None, width=None, name=None, act='AUTO', dropout=0, fcmp_act=None,
-                 include_bias=True, init='XAVIER', init_bias=0, mean=0, std=1,
+    def __init__(self, n_filters, height=None, width=None, output_size=None, name=None, act='AUTO',
+                 dropout=0, fcmp_act=None, include_bias=True, init='XAVIER', init_bias=0, mean=0, std=1,
                  output_padding=None, output_padding_height=None, output_padding_width=None,
                  padding=None, padding_height=None, padding_width=None,
                  stride=None, stride_horizontal=None, stride_vertical=None, truncation_factor=None,
-                 src_layers=None, output_size=None, **kwargs):
+                 src_layers=None, **kwargs):
         if any([output_padding, output_padding_height, output_padding_width]) and output_size is not None:
             raise DLPyError('you cannot specify values for both output_size '
                             'and output_padding or output_padding_height or output_padding_width')
@@ -828,6 +992,7 @@ class Pooling(Layer):
         if width is None and height is None:
             parameters['width'] = 2
             parameters['height'] = 2
+        # When width and height is 0, it will do global pooling
         # elif width == 0 or height == 0:
         #     raise DLPyError('Neither width nor height can be 0')
         elif width is None:
@@ -882,9 +1047,24 @@ class Pooling(Layer):
 
 
 class GlobalAveragePooling2D(Pooling):
+    '''
+    Global Average Pooling layer in 2D
+
+    Parameters
+    ----------
+    name : string, optional
+        Specifies the name of the layer.
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`GlobalAveragePooling2D`
+
+    '''
     def __init__(self, name = None, src_layers = None, **kwargs):
-        super(GlobalAveragePooling2D, self).__init__(width=0, height=0, stride=1, name=None,
-                                                     pool='mean',src_layers=None, **kwargs)
+        super(GlobalAveragePooling2D, self).__init__(width=0, height=0, stride=1, name=name,
+                                                     pool='mean', src_layers=src_layers, **kwargs)
 
     @property
     def output_size(self):
@@ -1837,16 +2017,16 @@ class Reshape(Layer):
 
 class Segmentation(Layer):
     """
-    Reshape layer
+    Segmentation layer
 
     Parameters
     ----------
     name : string, optional
         Specifies the name of the layer.
     act : string, optional
-        | Specifies the activation function.
-        | possible values: [ AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP ]
-        | default: AUTO
+        Specifies the activation function.
+        possible values: [ AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP ]
+        default: AUTO
     fcmp_act : string, optional
         Specifies the FCMP activation function for the layer.
     src_layers : iterable Layer, optional
@@ -1866,7 +2046,7 @@ class Segmentation(Layer):
 
     Returns
     -------
-    :class:`Reshape`
+    :class:`Segmentation`
     """
 
     type = 'segmentation'
@@ -1957,7 +2137,7 @@ class ChannelShuffle(Layer):
 
     Returns
     -------
-    :class:`BN`
+    :class:`ChannelShuffle`
 
     '''
     type = 'channelshuffle'
@@ -2233,7 +2413,29 @@ class FastRCNN(Layer):
         return 0
 
 
-class CLoss(Layer):
+class EmbeddingLoss(Layer):
+    '''
+    EmbeddingLoss layer
+
+    Parameters
+    ----------
+    name : string, optional
+        Specifies the name of the layer.
+    distance : string, optional
+        Specifies the distance measure for the embedding loss layer.
+        Valid Values: AUTO, COS, L1, L2
+        Default: L2
+    margin : double, optional
+        Specifies the margin value that defines a radius for dissimilar pair contributions.
+        Default: 2
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`EmbeddingLoss`
+
+    '''
     type = 'closs'
     type_label = 'Closs'
     type_desc = 'Closs layer'
@@ -2262,7 +2464,6 @@ class CLoss(Layer):
 
     @property
     def output_size(self):
-        # TODO
         if self._output_size is None:
             self._output_size = self.src_layers[0].output_size
         return self._output_size
@@ -2270,55 +2471,6 @@ class CLoss(Layer):
     @property
     def num_bias(self):
         return 0
-
-
-class Clustering(Layer):
-    type = 'cluster'
-    type_label = 'cluster'
-    type_desc = 'cluster layer'
-    can_be_last_layer = True
-    number_of_instances = 0
-
-    def __init__(self, n_clusters, name=None, alpha=1.0, cluster_error='KL', src_layers=None, **kwargs):
-
-        if not __dev__ and len(kwargs) > 0:
-            raise DLPyError('**kwargs can be used only in development mode.')
-
-        parameters = locals()
-        parameters = _unpack_config(parameters)
-        # _clean_parameters(parameters)
-        Layer.__init__(self, name, parameters, src_layers)
-        self._output_size = None
-        self.color_code = get_color(self.type)
-
-    @property
-    def kernel_size(self):
-        return None
-
-    @property
-    def num_weights(self):
-        return 0
-
-    @property
-    def output_size(self):
-        # TODO
-        if self._output_size is None:
-            self._output_size = self.src_layers[0].output_size
-        return self._output_size
-
-    @property
-    def num_bias(self):
-        return 0
-
-
-def _clean_input_parameters(parameters):
-    del parameters['self']
-    del parameters['name']
-
-
-def _clean_parameters(parameters):
-    del parameters['src_layers']
-    _clean_input_parameters(parameters)
 
 
 def _clean_input_parameters(parameters):
@@ -2338,10 +2490,7 @@ def _unpack_config(config):
     for key, value in six.iteritems(kwargs):
         new_kwargs[camelcase_to_underscore(key)] = value
     del config['self'], config['name'], config['kwargs']
-    try:
-        del config['src_layers']
-    except:
-        pass
+    config.pop('src_layers', None)
     out = {}
     conflict_arg = [i for i in config if i in new_kwargs.keys()]
     for arg in conflict_arg:
@@ -2360,3 +2509,4 @@ Add = Res
 BatchNormalization = BN
 Concatenate = Concat
 Conv2D = Conv2d
+CLoss = EmbeddingLoss

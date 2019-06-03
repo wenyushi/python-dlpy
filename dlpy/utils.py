@@ -1010,17 +1010,18 @@ def _convert_coco(size, box, resize):
 def _convert_xml_annotation(filename, coord_type, resize):
     in_file = open(filename)
     filename, file_extension = os.path.splitext(filename)
-    out_file = open(filename+".txt", 'w')
     tree = ET.parse(in_file)
     root = tree.getroot()
+    object_ = root.find('object')
+    if object_ is None:
+        in_file.close()
+        return
     size = root.find('size')
     width = int(size.find('width').text)
     height = int(size.find('height').text)
+    out_file = open(filename + ".txt", 'w')
     for obj in root.iter('object'):
         cls = obj.find('name').text
-        # remove ignore class which is reserved in segmentation tool
-        if cls == 'ignore':
-            continue
         xmlbox = obj.find('bndbox')
         boxes = (float(xmlbox.find('xmin').text), float(xmlbox.find('ymin').text),
                  float(xmlbox.find('xmax').text), float(xmlbox.find('ymax').text))
