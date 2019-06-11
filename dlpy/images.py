@@ -307,7 +307,7 @@ class ImageTable(CASTable):
 
         return out
 
-    def show(self, nimages=5, ncol=8, randomize=False, image_column=None, figsize=None):
+    def show(self, nimages=5, ncol=8, randomize=False, image_column=None, where=None, figsize=None):
         '''
         Display a grid of images
 
@@ -332,6 +332,7 @@ class ImageTable(CASTable):
         '''
         nimages = min(nimages, len(self))
         image_column = self.running_image_column if image_column is None else image_column
+        self.params['where'] = where
 
         if randomize:
             temp_tbl = self.retrieve('image.fetchimages', _messagelevel='error',
@@ -345,6 +346,7 @@ class ImageTable(CASTable):
                                      sortby='random_index', to=nimages)
         else:
             temp_tbl = self._retrieve('image.fetchimages', to=nimages, image=image_column)
+        self.params['where'] = None
 
         if nimages > ncol:
             nrow = nimages // ncol + 1

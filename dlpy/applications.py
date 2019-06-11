@@ -2069,6 +2069,64 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
                 random_flip='none', random_crop='none', random_mutation='none',
                 norm_stds = [255 * 0.229, 255 * 0.224, 255 * 0.225], offsets = (255 * 0.485, 255 * 0.456, 255 * 0.406),
                 alpha=1, depth_multiplier=1):
+    '''
+    Generate a deep learning model with MobileNetV1 architecture.
+
+    Parameters
+    ----------
+    conn : CAS
+        Specifies the CAS connection object.
+    model_table : string or dict or CAS table, optional
+        Specifies the CAS table to store the deep learning model.
+    n_classes : int, optional
+        Specifies the number of classes. If None is assigned, the model will
+        automatically detect the number of classes based on the training set.
+        Default: 1000
+    n_channels : int, optional
+        Specifies the number of the channels (i.e., depth) of the input layer.
+        Default: 3
+    width : int, optional
+        Specifies the width of the input layer.
+        Default: 32
+    height : int, optional
+        Specifies the height of the input layer.
+        Default: 32
+    random_flip : string, optional
+        Specifies how to flip the data in the input layer when image data is
+        used. Approximately half of the input data is subject to flipping.
+        Valid Values: 'h', 'hv', 'v', 'none'
+        Default: 'none'
+    random_crop : string, optional
+        Specifies how to crop the data in the input layer when image data is
+        used. Images are cropped to the values that are specified in the width
+        and height parameters. Only the images with one or both dimensions
+        that are larger than those sizes are cropped.
+        Valid Values: 'none', 'unique'
+        Default: 'none'
+    random_mutation : string, optional
+        Specifies how to apply data augmentations/mutations to the data in the input layer.
+        Valid Values: 'none', 'random'
+        Default: 'NONE'
+    norm_stds : double or iter-of-doubles, optional
+
+        Default: (255 * 0.229, 255 * 0.224, 255 * 0.225)
+    offsets : double or iter-of-doubles, optional
+        Specifies an offset for each channel in the input data. The final input
+        data is set after applying scaling and subtracting the specified offsets.
+        Default: (103.939, 116.779, 123.68)
+    alpha : int, optional
+    depth_multiplier : int, optional
+
+
+    Returns
+    -------
+    :class:`Model`
+
+    References
+    ----------
+    https://arxiv.org/pdf/1605.07146.pdf
+
+    '''
     def _conv_block(inputs, filters, alpha, kernel = 3, stride = 1):
         """Adds an initial convolution layer (with batch normalization and relu6).
         # Arguments
@@ -2204,7 +2262,7 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
                                      stride = 2, block_id = 12)
     x, depth = _depthwise_conv_block(x, depth, 1024, alpha, depth_multiplier, block_id = 13)
 
-    x = GlobalAveragePooling2D(name = "global_avg_pool")(x)
+    x = GlobalAveragePooling2D(name = "Global_avg_pool")(x)
     x = OutputLayer(n=n_classes)(x)
 
     model = Model(conn, inp, x, model_table)
@@ -2314,7 +2372,7 @@ def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, w
     x = Conv2d(last_block_filters, 1, include_bias = False, name = 'Conv_1', act = 'identity')(x)
     x = BN(name = 'Conv_1_bn', act = 'relu')(x)
 
-    x = GlobalAveragePooling2D(name = "global_avg_pool")(x)
+    x = GlobalAveragePooling2D(name = "Global_avg_pool")(x)
     x = OutputLayer(n = n_classes)(x)
 
     model = Model(conn, inp, x, model_table)
@@ -2490,7 +2548,7 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
                    bottleneck_ratio=bottleneck_ratio,
                    groups=groups, stage=stage + 2)
 
-    x = GlobalAveragePooling2D(name="global_avg_pool")(x)
+    x = GlobalAveragePooling2D(name="Global_avg_pool")(x)
     x = OutputLayer(n = n_classes)(x)
 
     model = Model(conn, inputs=inp, outputs=x, model_table = model_table)
@@ -2624,7 +2682,7 @@ def DenseNet(conn, blocks, model_table='DenseNet', n_classes=1000, n_channels=3,
 
     x = BN(name='bn', act = 'relu')(x)
 
-    x = GlobalAveragePooling2D(name = "global_avg_pool")(x)
+    x = GlobalAveragePooling2D(name = "Global_avg_pool")(x)
     x = OutputLayer(n = n_classes, act='softmax', name='output_layer')(x)
 
     # Create model.
