@@ -19,7 +19,7 @@
 ''' SAS Deep Learning '''
 
 __version__ = '1.0.3-dev'
-__dev__ = False
+__dev__ = True
 
 from dlpy.model import Model
 from .images import ImageTable
