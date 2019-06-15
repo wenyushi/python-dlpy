@@ -862,7 +862,6 @@ def ResNet18_SAS(conn, model_table='RESNET18_SAS', batch_norm_first=True, n_clas
                                  batch_norm_first=batch_norm_first))
 
     # Bottom Layers
-    pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
     model.add(GlobalAveragePooling2D())
 
     model.add(OutputLayer(act='softmax', n=n_classes))
@@ -965,7 +964,6 @@ def ResNet18_Caffe(conn, model_table='RESNET18_CAFFE', batch_norm_first=False, n
                                      batch_norm_first=batch_norm_first, conv_short_cut=conv_short_cut))
 
     # Bottom Layers
-    # pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
     model.add(GlobalAveragePooling2D())
 
     model.add(OutputLayer(act='softmax', n=n_classes))
@@ -1066,8 +1064,7 @@ def ResNet34_SAS(conn, model_table='RESNET34_SAS', n_classes=1000, n_channels=3,
                                  strides=strides, batch_norm_first=batch_norm_first))
 
     # Bottom Layers
-    pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
-    model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
+    model.add(GlobalAveragePooling2D())
 
     model.add(OutputLayer(act='softmax', n=n_classes))
 
@@ -1167,8 +1164,7 @@ def ResNet34_Caffe(conn, model_table='RESNET34_CAFFE',  n_classes=1000, n_channe
                                      batch_norm_first=batch_norm_first, conv_short_cut=conv_short_cut))
 
     # Bottom Layers
-    pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
-    model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
+    model.add(GlobalAveragePooling2D())
 
     model.add(OutputLayer(act='softmax', n=n_classes))
 
@@ -1271,8 +1267,7 @@ def ResNet50_SAS(conn, model_table='RESNET50_SAS', n_classes=1000, n_channels=3,
     model.add(BN(act='relu'))
 
     # Bottom Layers
-    pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
-    model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
+    model.add(GlobalAveragePooling2D())
 
     model.add(OutputLayer(act='softmax', n=n_classes))
 
@@ -1390,8 +1385,7 @@ def ResNet50_Caffe(conn, model_table='RESNET50_CAFFE',  n_classes=1000, n_channe
                                          conv_short_cut=conv_short_cut))
 
         # Bottom Layers
-        pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
-        model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
+        model.add(GlobalAveragePooling2D())
 
         model.add(OutputLayer(act='softmax', n=n_classes))
 
@@ -1401,11 +1395,11 @@ def ResNet50_Caffe(conn, model_table='RESNET50_CAFFE',  n_classes=1000, n_channe
         if pre_trained_weights_file is None:
             raise DLPyError('\nThe pre-trained weights file is not specified.\n'
                             'Please follow the steps below to attach the pre-trained weights:\n'
-                            '1. go to the website https://support.sas.com/documentation/prod-p/vdmml/zip/ '
+                            '1. Go to the website https://support.sas.com/documentation/prod-p/vdmml/zip/ '
                             'and download the associated weight file.\n'
-                            '2. upload the *.h5 file to '
+                            '2. Upload the *.h5 file to '
                             'a server side directory which the CAS session has access to.\n'
-                            '3. specify the pre_trained_weights_file using the fully qualified server side path.')
+                            '3. Specify the pre_trained_weights_file using the fully qualified server side path.')
 
         model_cas = model_resnet50.ResNet50_Model(s=conn, model_table=model_table, n_channels=n_channels,
                                                   width=width, height=height, random_crop=random_crop, offsets=offsets)
@@ -1529,8 +1523,7 @@ def ResNet101_SAS(conn, model_table='RESNET101_SAS',  n_classes=1000,  n_channel
                                  strides=strides, batch_norm_first=batch_norm_first))
     model.add(BN(act='relu'))
     # Bottom Layers
-    pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
-    model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
+    model.add(GlobalAveragePooling2D())
 
     model.add(OutputLayer(act='softmax', n=n_classes))
 
@@ -1648,8 +1641,7 @@ def ResNet101_Caffe(conn, model_table='RESNET101_CAFFE', n_classes=1000, n_chann
                                          conv_short_cut=conv_short_cut))
 
         # Bottom Layers
-        pooling_size = (width // 2 // 2 // 2 // 2 // 2, height // 2 // 2 // 2 // 2 // 2)
-        model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
+        model.add(GlobalAveragePooling2D())
 
         model.add(OutputLayer(act='softmax', n=n_classes))
 
@@ -1659,11 +1651,11 @@ def ResNet101_Caffe(conn, model_table='RESNET101_CAFFE', n_classes=1000, n_chann
         if pre_trained_weights_file is None:
             raise DLPyError('\nThe pre-trained weights file is not specified.\n'
                             'Please follow the steps below to attach the pre-trained weights:\n'
-                            '1. go to the website https://support.sas.com/documentation/prod-p/vdmml/zip/ '
+                            '1. Go to the website https://support.sas.com/documentation/prod-p/vdmml/zip/ '
                             'and download the associated weight file.\n'
-                            '2. upload the *.h5 file to '
+                            '2. Upload the *.h5 file to '
                             'a server side directory which the CAS session has access to.\n'
-                            '3. specify the pre_trained_weights_file using the fully qualified server side path.')
+                            '3. Specify the pre_trained_weights_file using the fully qualified server side path.')
         model_cas = model_resnet101.ResNet101_Model( s=conn, model_table=model_table, n_channels=n_channels,
                                                      width=width, height=height, random_crop=random_crop,
                                                      offsets=offsets)
@@ -1787,9 +1779,7 @@ def ResNet152_SAS(conn, model_table='RESNET152_SAS',  n_classes=1000, n_channels
                                  strides=strides, batch_norm_first=batch_norm_first))
     model.add(BN(act='relu'))
     # Bottom Layers
-    pooling_size = (width // 2 // 2 // 2 // 2 // 2,
-                    height // 2 // 2 // 2 // 2 // 2)
-    model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
+    model.add(GlobalAveragePooling2D())
 
     model.add(OutputLayer(act='softmax', n=n_classes))
 
@@ -1907,9 +1897,7 @@ def ResNet152_Caffe(conn, model_table='RESNET152_CAFFE',  n_classes=1000, n_chan
                                          conv_short_cut=conv_short_cut))
 
         # Bottom Layers
-        pooling_size = (width // 2 // 2 // 2 // 2 // 2,
-                        height // 2 // 2 // 2 // 2 // 2)
-        model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
+        model.add(GlobalAveragePooling2D())
 
         model.add(OutputLayer(act='softmax', n=n_classes))
 
@@ -1918,11 +1906,11 @@ def ResNet152_Caffe(conn, model_table='RESNET152_CAFFE',  n_classes=1000, n_chan
         if pre_trained_weights_file is None:
             raise ValueError('\nThe pre-trained weights file is not specified.\n'
                              'Please follow the steps below to attach the pre-trained weights:\n'
-                             '1. go to the website https://support.sas.com/documentation/prod-p/vdmml/zip/ '
+                             '1. Go to the website https://support.sas.com/documentation/prod-p/vdmml/zip/ '
                              'and download the associated weight file.\n'
-                             '2. upload the *.h5 file to '
+                             '2. Upload the *.h5 file to '
                              'a server side directory which the CAS session has access to.\n'
-                             '3. specify the pre_trained_weights_file using the fully qualified server side path.')
+                             '3. Specify the pre_trained_weights_file using the fully qualified server side path.')
         model_cas = model_resnet152.ResNet152_Model( s=conn, model_table=model_table, n_channels=n_channels,
                                                      width=width, height=height, random_crop=random_crop,
                                                      offsets=offsets)
@@ -1985,7 +1973,7 @@ def ResNet_Wide(conn, model_table='WIDE_RESNET', batch_norm_first=True, number_o
     n_classes : int, optional
         Specifies the number of classes. If None is assigned, the model will
         automatically detect the number of classes based on the training set.
-        Default: 1000
+        Default: None
     n_channels : int, optional
         Specifies the number of the channels (i.e., depth) of the input layer.
         Default: 3
@@ -2057,8 +2045,7 @@ def ResNet_Wide(conn, model_table='WIDE_RESNET', batch_norm_first=True, number_o
                                  strides=strides, batch_norm_first=batch_norm_first))
     model.add(BN(act='relu'))
     # Bottom Layers
-    pooling_size = (width // 2 // 2, height // 2 // 2)
-    model.add(Pooling(width=pooling_size[0], height=pooling_size[1], pool='mean'))
+    model.add(GlobalAveragePooling2D())
 
     model.add(OutputLayer(act='softmax', n=n_classes))
 
@@ -2070,7 +2057,7 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
                 norm_stds = [255 * 0.229, 255 * 0.224, 255 * 0.225], offsets = (255 * 0.485, 255 * 0.456, 255 * 0.406),
                 alpha=1, depth_multiplier=1):
     '''
-    Generate a deep learning model with MobileNetV1 architecture.
+    Generates a deep learning model with the DenseNet architecture.
 
     Parameters
     ----------
@@ -3319,7 +3306,7 @@ def YoloV2_MultiSize(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, wid
     model.add(Conv2d(64, width=1, act='identity', include_bias=False, stride=1, src_layers=[pointLayer1]))
     model.add(BN(act=act))
     # reshape 26 * 26 * 64 -> 13 * 13 * 256
-    pointLayer3 = Reshape(act='identity', width=13, height=13, depth=256, name='reshape1')
+    pointLayer3 = Reshape(act='identity', width=grid_number, height=grid_number, depth=256, name='reshape1')
     model.add(pointLayer3)
 
     # concat
