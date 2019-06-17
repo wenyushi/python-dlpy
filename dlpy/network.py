@@ -125,7 +125,7 @@ class Network(Layer):
             if start in self.layers:
                 return
             # if the node is an input layer, add it and return
-            if start in self.input_layers and start.type != 'model':
+            if start.type == 'input' and start.type != 'model':
                 self.layers.append(start)
                 return
             for src_layer in start.src_layers:
@@ -148,7 +148,7 @@ class Network(Layer):
         self.inputs = inputs
         self.outputs = outputs
         self.output_layers = [output._op for output in outputs]
-        self.input_layers = [input._op for input in inputs]
+        self.input_layers = [input_._op for input_ in inputs]
 
         for layer in self.output_layers:
             build_map(layer)
@@ -2430,4 +2430,38 @@ def extract_fastrcnn_layer(layer_table):
     rpn_layer_config['name'] = layer_table['_DLKey0_'].unique()[0]
 
     layer = FastRCNN(**rpn_layer_config)
+    return layer
+
+
+def extract_cluster_layer(layer_table):
+    '''
+    Extract layer configuration from a deep clustering layer table
+
+    Parameters
+    ----------
+    layer_table : table
+        Specifies the selection of table containing the information
+        for the layer.
+
+    Returns
+    -------
+    dict
+        Options that can be passed to layer definition
+
+    '''
+    num_keys = ['n_clusters', 'alpha']
+    str_keys = ['cluster_error']
+
+    cluster_layer_config = dict()
+    for key in num_keys:
+        try:
+            cluster_layer_config[key] = layer_table['_DLNumVal_'][
+                layer_table['_DLKey1_'] == 'dlclusteropts.' + underscore_to_camelcase(key)].tolist()[0]
+        except IndexError:
+            pass
+
+    cluster_layer_config.update(get_str_configs(str_keys, 'dlclusteropts', layer_table))
+    cluster_layer_config['name'] = layer_table['_DLKey0_'].unique()[0]
+
+    layer = FastRCNN(**cluster_layer_config)
     return layer
