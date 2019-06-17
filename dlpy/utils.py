@@ -342,26 +342,31 @@ def find_caslib(conn, path):
         return None
 
 
-def get_imagenet_labels_table(conn):
+def get_imagenet_labels_table(conn, label_length=None):
     temp_name = random_name('new_label_table', 6)
 
     filename = os.path.join('datasources', 'imagenet_labels.csv')
     project_path = os.path.dirname(os.path.abspath(__file__))
     full_filename = os.path.join(project_path, filename)
 
-    return get_user_defined_labels_table(conn, full_filename)
+    return get_user_defined_labels_table(conn, full_filename, label_length)
 
 
-def get_user_defined_labels_table(conn, label_file_name):
+def get_user_defined_labels_table(conn, label_file_name, label_length=None):
     temp_name = random_name('new_label_table', 6)
 
     full_filename = label_file_name
+
+    if label_length is None:
+        char_length = 200
+    else:
+        char_length = label_length
 
     labels = pd.read_csv(full_filename, skipinitialspace=True, index_col=False)
     conn.upload_frame(labels, casout=dict(name=temp_name, replace=True),
                       importoptions={'vars':[
                           {'name': 'label_id', 'type': 'int64'},
-                          {'name': 'label', 'type': 'char', 'length': 200}]})
+                          {'name': 'label', 'type': 'char', 'length': char_length}]})
 
     return conn.CASTable(temp_name)
 
@@ -432,7 +437,7 @@ def caslibify(conn, path, task='save'):
             remaining_path += sep
 
         if caslib is not None:
-            return caslib, remaining_path
+            return caslib, remaining_path, False
         else:
             new_caslib = random_name('Caslib', 6)
             rt = conn.retrieve('addcaslib', _messagelevel='error', name=new_caslib, path=path,
@@ -441,7 +446,7 @@ def caslibify(conn, path, task='save'):
             if rt.severity > 1:
                 raise DLPyError('something went wrong while adding the caslib for the specified path.')
             else:
-                return new_caslib, ''
+                return new_caslib, '', True
     else:
         server_type = get_cas_host_type(conn).lower()
         if server_type.startswith("lin") or server_type.startswith("osx"):
@@ -452,10 +457,10 @@ def caslibify(conn, path, task='save'):
         if len(path_split) == 2:
             caslib = find_caslib(conn, path_split[0])
             if caslib is not None:
-                return caslib, path_split[1]
+                return caslib, path_split[1], False
             else:
-                caslib = random_name('Caslib', 6)
-                rt = conn.retrieve('addcaslib', _messagelevel='error', name=caslib, path=path_split[0],
+                new_caslib = random_name('Caslib', 6)
+                rt = conn.retrieve('addcaslib', _messagelevel='error', name=new_caslib, path=path_split[0],
                                    activeonadd=False, subdirectories=True, datasource={'srctype': 'path'})
 
                 if rt.severity > 1:
@@ -463,9 +468,9 @@ def caslibify(conn, path, task='save'):
                           'is part of an existing caslib. A workaround is to put the file under that subpath or'
                           'move to a different location. It sounds and is inconvenient but it is to protect '
                           'your privacy granted by your system admin.')
-                    return None, None
+                    return None, None, False
                 else:
-                    return caslib, path_split[1]
+                    return new_caslib, path_split[1], True
         else:
             raise DLPyError('we need more than one level of directories. e.g., /dir1/dir2 ')
 
@@ -841,7 +846,7 @@ def get_max_objects(cas_table):
 
 def filter_by_filename(cas_table, filename, filtered_name=None):
     '''
-    Filteres CASTable by filename using '_path_' or '_filename_0' column
+    Filters CASTable by filename using '_path_' or '_filename_0' column
 
     Parameters
     ----------
@@ -872,6 +877,8 @@ def filter_by_filename(cas_table, filename, filtered_name=None):
     if '_path_' not in cas_table.columns.tolist() and '_filename_0' not in cas_table.columns.tolist():
         raise ValueError('\'_path_\' or \'_filename_0\' column not found in CASTable : {}'.format(cas_table.name))
     if isinstance(filename, list):
+        if not all(isinstance(x, str) for x in filename):
+            raise ValueError('filename must be a string or a list of strings')
         image_id = []
         for name in filename:
             if '_path_' in cas_table.columns.tolist():
@@ -887,6 +894,8 @@ def filter_by_filename(cas_table, filename, filtered_name=None):
             image_id = cas_table[cas_table['_path_'].str.contains(filename)]['_id_'].tolist()
         elif '_filename_0' in cas_table.columns.tolist():
             image_id = cas_table[cas_table['_filename_0'].str.contains(filename)]['_id_'].tolist()
+    else:
+        raise ValueError('filename must be a string or a list of strings')
 
     if not image_id:
         raise ValueError('filename: {} not found in \'_path_\' or'
@@ -1146,16 +1155,17 @@ def create_object_detection_table(conn, data_path, coord_type, output,
         Linux clients with Windows CAS Server:
         data_path=\\path\to\data\path
         local_path=/path/to/data/path
-    image_size : tuple or integer, optional
+    image_size : integer, optional
         Specifies the size of images to resize.
-        If a tuple is passed, the first integer is width and the second value is height.
-        Default: (416, 416)
+        Default: 416
 
     Returns
     -------
     A list of variables that are the labels of the object detection table
 
     '''
+    if coord_type.lower() not in ['yolo', 'coco']:
+        raise ValueError('coord_type, {}, is not supported'.format(coord_type))
     with sw.option_context(print_messages=False):
         server_type = get_cas_host_type(conn).lower()
     local_os_type = platform.system()
@@ -1174,10 +1184,6 @@ def create_object_detection_table(conn, data_path, coord_type, output,
     conn.retrieve('loadactionset', _messagelevel = 'error', actionset = 'deepLearn')
     conn.retrieve('loadactionset', _messagelevel = 'error', actionset = 'transpose')
 
-    if coord_type.lower() not in ['yolo', 'coco']:
-        raise ValueError('coord_type, {}, is not supported'.format(coord_type))
-    image_size = _pair(image_size)
-
     # label variables, _ : category;
     yolo_var_name = ['_', '_x', '_y', '_width', '_height']
     coco_var_name = ['_', '_xmin', '_ymin', '_xmax', '_ymax']
@@ -1188,7 +1194,7 @@ def create_object_detection_table(conn, data_path, coord_type, output,
 
     det_img_table = random_name('DET_IMG')
 
-    caslib, path_after_caslib = caslibify(conn, data_path, task='load')
+    caslib, path_after_caslib, tmp_caslib = caslibify(conn, data_path, task='load')
     if caslib is None and path_after_caslib is None:
         print('Cannot create a caslib for the provided path. Please make sure that the path is accessible from'
               'the CAS Server. Please also check if there is a subpath that is part of an existing caslib')
@@ -1207,8 +1213,8 @@ def create_object_detection_table(conn, data_path, coord_type, output,
         res = conn.image.processImages(table={'name': det_img_table},
                                        imagefunctions=[
                                            {'options': {'functiontype': 'RESIZE',
-                                                        'height': image_size[1],
-                                                        'width': image_size[0]}}
+                                                        'height': image_size,
+                                                        'width': image_size}}
                                        ],
                                        casout={'name': det_img_table, 'replace': True})
 
@@ -1218,7 +1224,7 @@ def create_object_detection_table(conn, data_path, coord_type, output,
         else:
             print("NOTE: Images are processed.")
 
-    if caslib is not None:
+    if (caslib is not None) and tmp_caslib:
         conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib)
 
     with sw.option_context(print_messages = False):
@@ -1231,10 +1237,7 @@ def create_object_detection_table(conn, data_path, coord_type, output,
                 raise DLPyError('something went wrong while adding the caslib for the specified path.')
 
     # find all of annotation files under the directory
-    a = conn.fileinfo(caslib = caslib, allfiles = True)
     label_files = conn.fileinfo(caslib = caslib, allfiles = True).FileInfo['Name'].values
-    # label_files = [x for x in label_files if x.endswith('.xml') or x.endswith('.json')]
-
     # if client and server are on different type of operation system, we assume user parse xml files and put
     # txt files in data_path folder. So skip get_txt_annotation()
     # parse xml or json files and create txt files
@@ -1296,8 +1299,8 @@ def create_object_detection_table(conn, data_path, coord_type, output,
             conn.transpose(prefix = '_Object', suffix = var, id = 'seq_id', transpose = [var],
                            table = dict(name = output, groupby = 'idjoin'),
                            casout = dict(name = 'output{}'.format(var), replace = 1))
-            conn.altertable(name = 'output{}'.format(var), columns=[{'name':'_NAME_', 'drop':True}])
-    # dljoin the five columns
+            conn.altertable(name = 'output{}'.format(var), columns=[{'name': '_NAME_', 'drop': True}])
+    # dljoin the five label columns
     conn.deeplearn.dljoin(table = 'output{}'.format(var_name[0]), id = 'idjoin',
                           annotatedtable = 'output{}'.format(var_name[1]),
                           casout = dict(name = output, replace = True), _messagelevel = 'error')
@@ -1321,8 +1324,6 @@ def create_object_detection_table(conn, data_path, coord_type, output,
             var_order.append('_Object'+str(i)+var)
     # change order of columns and unify the formattedlength of class columns
     format_ = '${}.'.format(cls_col_format_length)
-    # conn.altertable(name = output, columnorder = var_order, columns =[{'name': '_Object{}_'.format(i),
-    #                                                                    'format': format_} for i in range(max_instance)])
     conn.altertable(name = output, columns = [{'name': '_Object{}_'.format(i), 'format': format_}
                                               for i in range(max_instance)])
     # parse and create dljoin id column
@@ -1331,8 +1332,7 @@ def create_object_detection_table(conn, data_path, coord_type, output,
 
     image_sas_code = "length idjoin $ {0}; fn=scan(_path_,{1},'/'); idjoin = inputc(substr(fn, 1, length(fn)-4),'{0}.');".format(filename_col_length,
                                                 len(data_path.split('\\')) - 2)
-    img_tbl = conn.CASTable(det_img_table, computedvars = ['idjoin'], computedvarsprogram = image_sas_code,
-                            vars = [{'name': 'idjoin'}, {'name': '_image_'}])
+    img_tbl = conn.CASTable(det_img_table, computedvars = ['idjoin'], computedvarsprogram = image_sas_code, vars = [{'name': '_image_'}])
     # join the image table and label table together
     res = conn.deepLearn.dljoin(table = img_tbl, annotation = output, id = 'idjoin',
                                 casout = {'name': output, 'replace': True, 'replication': 0})
@@ -1460,22 +1460,16 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
     conn.retrieve('loadactionset', _messagelevel = 'error', actionset = 'deepLearn')
     conn.retrieve('loadactionset', _messagelevel = 'error', actionset = 'transpose')
 
-    caslib, path_after_caslib = caslibify(conn, data_path, task='load')
-    if caslib is None and path_after_caslib is None:
-        print('Cannot create a caslib for the provided (i.e., '+data_path+') path. Please make sure that the '
-                                                                          'path is accessible from'
-                                                                          'the CAS Server. Please also check if there is a subpath that is part of an existing caslib')
-
     # now it is time to check if we can read the annotation files from the server
     caslib_annotation = None
     annotation_data_is_in_the_client = 0
     label_files = []
-    with sw.option_context(print_messages = False):
-        caslib_annotation = find_caslib(conn, data_path)
+    with sw.option_context(print_messages=False):
+        caslib_annotation, path_after_ann_caslib, tmp_caslib = caslibify(conn, annotation_path, task='save')
         if caslib_annotation is None:
             caslib_annotation = random_name('Caslib', 6)
             rt = conn.retrieve('addcaslib', _messagelevel = 'error', name = caslib_annotation, path = annotation_path,
-                               activeonadd = False, subdirectories = True, datasource = {'srctype': 'path'})
+                               activeonadd=False, subdirectories = True, datasource = {'srctype': 'path'})
             if rt.severity > 1:
                 print('NOTE: Something went wrong while adding the caslib for the specified path. this might '
                       'be due to the following reasons: 1) server cannot access the annotation_path, '
@@ -1508,13 +1502,21 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
     if len(label_files) == 0:
         raise DLPyError('There is no annotation file in the annotation_path.')
 
+    if (caslib_annotation is not None) and tmp_caslib:
+        conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib_annotation)
+
+    caslib, path_after_caslib, tmp_caslib = caslibify(conn, data_path, task='load')
+    if caslib is None and path_after_caslib is None:
+        print('Cannot create a caslib for the provided (i.e., '+data_path+') path. Please make sure that the '
+                                                                          'path is accessible from'
+                                                                          'the CAS Server. Please also check if there is a subpath that is part of an existing caslib')
     det_img_table = random_name('DET_IMG')
     with sw.option_context(print_messages=False):
         res = conn.image.loadImages(path=path_after_caslib,
                                     recurse=True,
                                     labelLevels=-1,
                                     caslib=caslib,
-                                    casout={'name': det_img_table, 'replace':True})
+                                    casout={'name': det_img_table, 'replace': True})
         if res.severity > 0:
             for msg in res.messages:
                 if not msg.startswith('WARNING'):
@@ -1536,6 +1538,10 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
         else:
             print("NOTE: Images are processed.")
 
+    if (caslib is not None) and tmp_caslib:
+        conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib)
+        caslib=None
+
     if coord_type.lower() not in ['yolo', 'coco']:
         raise ValueError('coord_type, {}, is not supported'.format(coord_type))
 
@@ -1546,6 +1552,11 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
         var_name = yolo_var_name
     elif coord_type.lower() == 'coco':
         var_name = coco_var_name
+
+    if annotation_data_is_in_the_client == 0:
+        caslib_annotation, path_after_ann_caslib, tmp_caslib = caslibify(conn, annotation_path, task='save')
+    else:
+        tmp_caslib = False
 
     label_tbl_name = random_name('obj_det')
     idjoin_format_length = len(max(label_files, key=len)) - len('.txt')
@@ -1579,6 +1590,8 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
     conn.runcode(code=fmt_code, _messagelevel='error')
     cls_col_format_length = conn.columninfo(output).ColumnInfo.loc[0][3]
     cls_col_format_length = cls_col_format_length if cls_col_format_length >= len('NoObject') else len('NoObject')
+
+    print('labels are being processed')
 
     conn.altertable(name=output, columns=[dict(name='Var1', rename=var_name[0]),
                                           dict(name='Var2', rename=var_name[1]),
@@ -1637,8 +1650,7 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
 
     image_sas_code = "length idjoin $ {0}; fn=scan(_path_,{1},'/'); idjoin = inputc(substr(fn, 1, length(fn)-4),'{0}.');".format(filename_col_length,
                                                                                                                                  len(data_path.split('\\')) - 2)
-    img_tbl = conn.CASTable(det_img_table, computedvars=['idjoin'], computedvarsprogram=image_sas_code,
-                            vars=[{'name': 'idjoin'}, {'name': '_image_'}])
+    img_tbl = conn.CASTable(det_img_table, computedvars=['idjoin'], computedvarsprogram=image_sas_code, vars=[{'name': '_image_'}])
     # join the image table and label table together
     res = conn.deepLearn.dljoin(table=img_tbl, annotation=output, id='idjoin',
                                 casout={'name': output, 'replace': True, 'replication': 0})
@@ -1650,8 +1662,7 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
             conn.table.droptable('output{}'.format(var))
         conn.table.droptable(det_img_table)
 
-    conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib)
-    if caslib_annotation is not None:
+    if (caslib_annotation is not None) and tmp_caslib:
         conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib_annotation)
 
     print("NOTE: Object detection table is successfully created.")
@@ -1659,6 +1670,13 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
 
 
 def _ntuple(n):
+    '''
+    create a function used to generate a tuple with length of n
+
+    n : int
+        specifies the length of the tuple.
+
+    '''
     def parse(x):
         if isinstance(x, collections.Iterable):
             return x
@@ -1671,6 +1689,25 @@ _triple = _ntuple(3)
 
 
 def parameter_2d(param1, param2, param3, default_value):
+    '''
+    a help function to generate layer properties such as strides, padding, output_padding.
+
+    For example:
+        parameter_2d(param1=None, param2=None, param3=None, default_value=(4, 4)) would return (4, 4)
+        parameter_2d(param1=2, param2=3, param3=2, default_value=(4, 4)) would return (3, 2)
+        parameter_2d(param1=2, param2=None, param3=None, default_value=(4, 4)) would return (2, 2)
+        parameter_2d(param1=None, param2=None, param3=2, default_value=(4, 4)) would return (4, 2)
+
+    param1 : int
+        specifies the layer option, such as stride, padding, output_padding
+    param2 : int
+        specifies the layer option related to the first dimension, such as stride_vertical, padding_height
+    param3 : int
+        specifies the layer option related to the second dimension, such as stride_horizontal, padding_width
+    default_value : tuple
+        specifies default value
+
+    '''
     if param1 is not None:
         return _pair(param1)
     elif not any([param2, param3]):

@@ -26,6 +26,8 @@ import collections
 import sys
 from .utils import image_blocksize, unify_keys, input_table_check, random_name, check_caslib, caslibify
 from .utils import filter_by_image_id, filter_by_filename
+from dlpy.timeseries import TimeseriesTable
+from dlpy.timeseries import _get_first_obs, _get_last_obs, _combine_table, _prepare_next_input
 from dlpy.utils import DLPyError, Box, DLPyDict
 from dlpy.lr_scheduler import _LRScheduler, FixedLR, StepLR, FCMPLR
 from dlpy.network import Network
@@ -42,6 +44,10 @@ class Model(Network):
     model_explain_table = None
     valid_res_tbl = None
     model_ever_trained = False
+    train_tbl = None
+    valid_tbl = None
+    score_message_level = 'note'
+
 
     def change_labels(self, label_file, id_column, label_column):
         '''
@@ -102,18 +108,18 @@ class Model(Network):
         from parse import parse, search
         if start_lr >= end_lr:
             raise ValueError('start_lr should be smaller than end_lr')
-        if not self.conn.has_actionset('fcmp'):
-            self.conn.loadactionset(actionSet = 'fcmp', _messagelevel = 'error')
+        if not self.conn.has_actionset('fcmpact'):
+            self.conn.loadactionset(actionSet = 'fcmpact', _messagelevel = 'error')
         self.conn.addRoutines(
-            routineCode = f'''
+            routineCode = '''
             function annealing_exp(rate, initRate, batch);
-                lrmin = {start_lr};
-                lrmax = {end_lr};
-                prt = batch / {num_iteration};
+                lrmin = {0};
+                lrmax = {1};
+                prt = batch / {2};
                 rate = min(lrmin*(lrmax/lrmin)**prt, lrmax);
                 return(rate);
             endsub;
-            ''',
+            '''.format(start_lr, end_lr, num_iteration),
             package = 'pkg',
             funcTable = dict(name = 'annealing_exp', replace = 1)
         )
@@ -283,6 +289,10 @@ class Model(Network):
         :class:`CASResults`
 
         """
+        # set reference to the training and validation table
+        self.train_tbl = data
+        self.valid_tbl = valid_table
+
         input_tbl_opts = input_table_check(data)
         input_table = self.conn.CASTable(**input_tbl_opts)
 
@@ -505,16 +515,16 @@ class Model(Network):
                             **kwargs)
         return r
 
-    def plot_training_history(self, items=('Loss', 'FitError'), fig_size=(12, 5), tick_frequency=1):
+    def plot_training_history(self, items=['Loss', 'FitError'], fig_size=(12, 5), tick_frequency=1):
         '''
         Display the training iteration history. If using in Jupyter,
         supress return object with semicolon - plot_training_history();
 
         Parameters
         ----------
-        items : tuple, optional
+        items : list, optional
             Specifies the items to be displayed.
-            Default : ('Loss', 'FitError')
+            Default : ['Loss', 'FitError')
         fig_size : tuple, optional
             Specifies the size of the figure.
             Default : (12, 5)
@@ -538,8 +548,8 @@ class Model(Network):
             else:
                 x_ticks = self.training_history.Epoch.values
 
-            return self.training_history.plot(x='Epoch', y=list(('Loss', 'FitError')),
-                                              figsize=(12, 5),
+            return self.training_history.plot(x='Epoch', y=items,
+                                              figsize=fig_size,
                                               xticks=x_ticks)
         else:
             raise DLPyError('model.fit should be run before calling plot_training_history')
@@ -710,9 +720,6 @@ class Model(Network):
         if coord_type.lower() not in ['yolo', 'coco']:
             raise ValueError('coord_type, {}, is not supported'.format(coord_type))
 
-        self.conn.update(table=dict(name = self.model_name, where='_DLChrVal_ eq "iouThreshold"'),
-                         set=[{'var':'_DLNumVal_', 'value':'0.5'}])
-
         if detection_data is not None:
             input_tbl_opts = input_table_check(detection_data)
             det_tbl = self.conn.CASTable(**input_tbl_opts)
@@ -874,7 +881,7 @@ class Model(Network):
 
         Unlike the `evaluate` function, this function just does the
         inference and does not do further analysis. This function is
-        good gor non-classification tasks.
+        good for non-classification tasks.
 
         Parameters
         ----------
@@ -965,6 +972,276 @@ class Model(Network):
                              n_threads=n_threads)
             self.valid_res_tbl = self.conn.CASTable(valid_res_tbl)
             return res
+
+    def forecast(self, test_table=None, horizon=1, train_table=None, layer_out=None,
+                 layers=None, gpu=None, buffer_size=10, mini_batch_buf_size=None,
+                 use_best_weights=False, n_threads=None, casout=None):
+        """
+        Make forecasts based on deep learning models trained on `TimeseriesTable`.
+
+        This method performs either one-step-ahead forecasting or multi-step-ahead
+        forecasting determined by the `horizon` parameter. If the model is autoregressive
+        (the value of the response variable depends on its values at earlier time steps),
+        it performs one-step-ahead forecasting recursively to achieve multi-step-ahead
+        forecasting. More specifically, the predicted value at the previous
+        time step is inserted into the input vector for predicting the next time step.
+
+        Parameters
+        ----------
+        test_table : string or :class:`CASTable`, optional
+            Specifies the test table. If `test_table=None`, the model cannot have
+            additional static covariates or predictor timeseries, and can only
+            be a autoregressive model. In this case, the forecast extends the
+            timeseries from the last timestamp found in the training/validation set.
+            If the model contains additional static covariates or predictor
+            timeseries (that are available for predicting the target timeseries),
+            the test table has to be provided, and the forecast starts from the
+            first timestamp in the test data. If the model is autoregressive, and
+            the test data columns do not include all the required preceeding
+            time points of the target series (the lagged target variables),
+            the forecast will be extended from the last time timestamp in
+            training/validation set and only use the static covariates or
+            predictor timeseries information from the test data if they are
+            available for the corresponding time points.
+            Default : `None`
+        horizon : int, optional.
+            Specifies the forecasting horizon. If `horizon=1` and test data
+            is provided, it will make one-step-ahead forecasts for all timestamps
+            in the test data.(given the test data has all the columns required
+            to make prediction.) Otherwise, it will only make one forecasted series
+            per by-group, with the length specified by the `horizon` parameter.
+            Default : 1
+        train_table : :class:`TimeseriesTable`, optional.
+            If model has been fitted with a TimeseriesTable, this argument is ignored.
+            Otherwise, this argument is required, and reference to the TimeseriesTable
+            used for model training, as it contains information regarding when to
+            extend the forecast from, and sequence length etc.
+        layer_out : string, optional
+            Specifies the settings for an output table that includes
+            layer output values. By default, all layers are included.
+            You can filter the list with the layers parameter.
+        layers : list of strings
+            Specifies the names of the layers to include in the output
+            layers table.
+        gpu : :class:`Gpu`, optional
+            When specified, the action uses graphical processing
+            unit hardware. The simplest way to use GPU processing is
+            to specify "gpu=1". In this case, the default values of
+            other GPU parameters are used. Setting gpu=1 enables all
+            available GPU devices for use. Setting gpu=0 disables GPU
+            processing.
+        buffer_size : int, optional
+            Specifies the number of observations to score in a single
+            batch. Larger values use more memory.
+            Default: 10
+        mini_batch_buf_size : int, optional
+            Specifies the size of a buffer that is used to save input
+            data and intermediate calculations. By default, each layer
+            allocates an input buffer that is equal to the number of
+            input channels multiplied by the input feature map size
+            multiplied by the bufferSize value. You can reduce memory
+            usage by specifying a value that is smaller than the
+            bufferSize. The only disadvantage to specifying a small
+            value is that run time can increase because multiple smaller
+            matrices must be multiplied instead of a single large
+            matrix multiply.
+        use_best_weights : bool, optional
+            When set to True, the weights that provides the smallest loss
+            error saved during a previous training is used while scoring
+            input data rather than the final weights from the training.
+            default: False
+        n_threads : int, optional
+            Specifies the number of threads to use. If nothing is set then
+            all of the cores available in the machine(s) will be used.
+        casout : dict or :class:`CASTable`, optional
+            If it is dict, it specifies the output CASTable parameters.
+            If it is CASTable, it is the CASTable that will be overwritten.
+            None means a new CASTable with random name will be generated.
+            Default: None
+
+        Returns
+        -------
+        :class:`CASTable`
+
+        """
+
+        if horizon > 1:
+            self.score_message_level = 'error' #prevent multiple notes in multistep forecast
+
+        if self.train_tbl is None:
+            self.train_tbl = train_table
+
+        if not isinstance(self.train_tbl, TimeseriesTable):
+            raise RuntimeError('If the model is not fitted with a TimeseriesTable '
+                               '(such as being imported from other sources), '
+                               'please consider use the train_table argument '
+                               'to pass a reference to the TimeseriesTable used for training, '
+                               'since model.forecast requires information '
+                               'including the last timestamp to extend from and subsequence length etc, '
+                               'which is stored in preprocessed TimeseriesTable. '
+                               'If this information is not available, consider using model.predict '
+                               'for non-timeseries prediction.')
+
+        if test_table is None:
+            print('NOTE: test_table is None, extending forecast from training/validation data')
+
+            if isinstance(self.valid_tbl, str):
+                self.valid_tbl = self.conn.CASTable(self.valid_tbl)
+
+            train_valid_tbl = _combine_table(self.train_tbl, self.valid_tbl)
+
+            cur_results = _get_last_obs(train_valid_tbl, self.train_tbl.timeid,
+                                     groupby=self.train_tbl.groupby_var)
+
+            self.conn.retrieve('table.droptable', _messagelevel='error', name=train_valid_tbl.name)
+
+            for i in range(horizon):
+                if i == 0:
+                    autoregressive_series = self.train_tbl.autoregressive_sequence + [self.train_tbl.target]
+                else:
+                    autoregressive_series = self.train_tbl.autoregressive_sequence + ['_DL_Pred_']
+
+                cur_input = _prepare_next_input(cur_results, timeid=self.train_tbl.timeid,
+                                                timeid_interval=self.train_tbl.acc_interval,
+                                                autoregressive_series=autoregressive_series,
+                                                sequence_opt=self.train_tbl.sequence_opt,
+                                                groupby=self.train_tbl.groupby_var)
+
+                if i == 0:
+                    self.conn.retrieve('table.droptable', _messagelevel='error', name=cur_results.name)
+
+                self.predict(cur_input, layer_out=layer_out, layers=layers,
+                             gpu=gpu, buffer_size=buffer_size,
+                             mini_batch_buf_size=mini_batch_buf_size,
+                             use_best_weights=use_best_weights,
+                             n_threads=n_threads)
+
+                self.conn.retrieve('table.droptable', _messagelevel='error', name=cur_input.name)
+
+                cur_results = self.valid_res_tbl
+
+                if i == 0:
+                    output_tbl = cur_results
+                    if casout is None:
+                        casout={'name': random_name('forecast_output', 6)}
+
+                    # Use _combine_table here to serve as a renaming
+                    output_tbl = _combine_table(output_tbl,  casout=casout)
+                else:
+                    output_tbl = _combine_table(output_tbl, cur_results, casout=output_tbl)
+        else:
+            if isinstance(test_table, str):
+                test_table = self.conn.CASTable(test_table)
+
+            if set(self.train_tbl.autoregressive_sequence).issubset(test_table.columns.tolist()):
+
+                if horizon == 1:
+                    self.predict(test_table, layer_out=layer_out, layers=layers,
+                             gpu=gpu, buffer_size=buffer_size,
+                             mini_batch_buf_size=mini_batch_buf_size,
+                             use_best_weights=use_best_weights,
+                             n_threads=n_threads)
+
+                    output_tbl = self.valid_res_tbl
+
+                    if casout is None:
+                        casout={'name': random_name('forecast_output', 6)}
+
+                    # Use _combine_table here to serve as a renaming
+                    output_tbl = _combine_table(output_tbl,  casout=casout)
+                else:
+                    cur_input = _get_first_obs(test_table, self.train_tbl.timeid,
+                             groupby=self.train_tbl.groupby_var)
+
+                    for i in range(horizon):
+                        if i > 0:
+                            autoregressive_series = self.train_tbl.autoregressive_sequence + ['_DL_Pred_']
+
+                            cur_input = _prepare_next_input(cur_results, timeid=self.train_tbl.timeid,
+                                                            timeid_interval=self.train_tbl.acc_interval,
+                                                            autoregressive_series=autoregressive_series,
+                                                            sequence_opt=self.train_tbl.sequence_opt,
+                                                            covar_tbl = test_table,
+                                                            groupby=self.train_tbl.groupby_var)
+
+                        self.predict(cur_input, layer_out=layer_out, layers=layers,
+                                     gpu=gpu, buffer_size=buffer_size,
+                                     mini_batch_buf_size=mini_batch_buf_size,
+                                     use_best_weights=use_best_weights,
+                                     n_threads=n_threads)
+
+                        self.conn.retrieve('table.droptable', _messagelevel='error', name=cur_input.name)
+
+                        cur_results = self.valid_res_tbl
+
+                        if i == 0:
+                            output_tbl = cur_results
+                            if casout is None:
+                                casout={'name': random_name('forecast_output', 6)}
+
+                            # Use _combine_table here to serve as a renaming
+                            output_tbl = _combine_table(output_tbl,  casout=casout)
+                        else:
+                            output_tbl = _combine_table(output_tbl, cur_results, casout=output_tbl)
+
+            else:
+                if isinstance(self.valid_tbl, str):
+                    self.valid_tbl = self.conn.CASTable(self.valid_tbl)
+
+                train_valid_tbl = _combine_table(self.train_tbl, self.valid_tbl)
+
+                cur_results = _get_last_obs(train_valid_tbl, self.train_tbl.timeid,
+                                         groupby=self.train_tbl.groupby_var)
+
+                self.conn.retrieve('table.droptable', _messagelevel='error', name=train_valid_tbl.name)
+
+                for i in range(horizon):
+                    if i == 0:
+                        autoregressive_series = self.train_tbl.autoregressive_sequence + [self.train_tbl.target]
+                    else:
+                        autoregressive_series = self.train_tbl.autoregressive_sequence + ['_DL_Pred_']
+
+                    cur_input = _prepare_next_input(cur_results, timeid=self.train_tbl.timeid,
+                                                    timeid_interval=self.train_tbl.acc_interval,
+                                                    autoregressive_series=autoregressive_series,
+                                                    sequence_opt=self.train_tbl.sequence_opt,
+                                                    covar_tbl = test_table,
+                                                    groupby=self.train_tbl.groupby_var)
+
+                    if i == 0:
+                        self.conn.retrieve('table.droptable', _messagelevel='error', name=cur_results.name)
+
+                    if cur_input.shape[0] == 0:
+                        raise RuntimeError('Input test data does not have all the required autoregressive ' +
+                                           'lag variables that appeared in the training set. ' +
+                                           'In this case, it has to have the timestamp that succeeds ' +
+                                           'the last time point in training/validation set.')
+
+                    self.predict(cur_input, layer_out=layer_out, layers=layers,
+                                 gpu=gpu, buffer_size=buffer_size,
+                                 mini_batch_buf_size=mini_batch_buf_size,
+                                 use_best_weights=use_best_weights,
+                                 n_threads=n_threads)
+
+                    self.conn.retrieve('table.droptable', _messagelevel='error', name=cur_input.name)
+
+                    cur_results = self.valid_res_tbl
+
+                    if i == 0:
+                        output_tbl = cur_results
+
+                        if casout is None:
+                            casout={'name': random_name('forecast_output', 6)}
+
+                        # Use _combine_table here to serve as a renaming
+                        output_tbl = _combine_table(output_tbl,  casout=casout)
+                    else:
+                        output_tbl = _combine_table(output_tbl, cur_results, casout=output_tbl)
+
+
+        self.score_message_level = 'note'
+
+        return output_tbl
 
     def score(self, table, model=None, init_weights=None, text_parms=None, layer_out=None,
               layer_image_type='jpg', layers=None, copy_vars=None, casout=None, gpu=None, buffer_size=10,
@@ -1077,7 +1354,9 @@ class Model(Network):
                                   layer_out=layer_out, encode_name=encode_name, n_threads=n_threads, random_flip=random_flip,
                                   random_crop=random_crop, top_probs=top_probs, random_mutation=random_mutation)
 
-        return self._retrieve_('deeplearn.dlscore', message_level='note', **parameters)
+
+        return self._retrieve_('deeplearn.dlscore', message_level=self.score_message_level, **parameters)
+
 
     def plot_evaluate_res(self, cas_table=None, img_type='A', image_id=None, filename=None, n_images=5,
                           target='_label_', predicted_class=None, label_class=None, randomize=False,
@@ -1366,21 +1645,17 @@ class Solver(DLPyDict):
         of the gamma parameter. For example, if you specify {5, 9, 13}, then
         the learning rate is multiplied by gamma after the fifth, ninth, and
         thirteenth epochs.
-    fcmp_learning_rate : string, optional
-        specifies the FCMP learning rate function.
 
     Returns
     -------
     :class:`Solver`
 
     '''
-    def __init__(self, lr_scheduler, use_locking=True, clip_grad_max=None, clip_grad_min=None):
-        if not isinstance(lr_scheduler, _LRScheduler):
-            raise TypeError('{} is not an LRScheduler'.format(type(lr_scheduler).__name__))
-        DLPyDict.__init__(self, use_locking=use_locking, clip_grad_max=clip_grad_max, clip_grad_min=clip_grad_min)
-        lr_scheduler = lr_scheduler or FixedLR()
-        for key, value in lr_scheduler.items():
-            self.__setitem__(key, value)
+    def __init__(self, learning_rate=0.001, learning_rate_policy='fixed', gamma=0.1, step_size=10, power=0.75,
+                 use_locking=True, clip_grad_max=None, clip_grad_min=None, steps=None):
+        DLPyDict.__init__(self, learning_rate=learning_rate, learning_rate_policy=learning_rate_policy, gamma=gamma,
+                          step_size=step_size, power=power, use_locking=use_locking, clip_grad_max=clip_grad_max,
+                          clip_grad_min=clip_grad_min, steps=steps)
 
     def set_method(self, method):
         '''
@@ -1444,16 +1719,16 @@ class VanillaSolver(Solver):
         value of the gamma parameter. For example, if you specify {5, 9, 13},
         then the learning rate is multiplied by gamma after the fifth, ninth,
         and thirteenth epochs.
-    fcmp_learning_rate : string, optional
-        specifies the FCMP learning rate function.
 
     Returns
     -------
     :class:`VanillaSolver`
 
     '''
-    def __init__(self, lr_scheduler, use_locking=True, clip_grad_max=None, clip_grad_min=None):
-        Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min)
+    def __init__(self, learning_rate=0.001, learning_rate_policy='fixed', gamma=0.1, step_size=10, power=0.75,
+                 use_locking=True, clip_grad_max=None, clip_grad_min=None, steps=None):
+        Solver.__init__(self, learning_rate, learning_rate_policy, gamma, step_size, power, use_locking,
+                        clip_grad_max, clip_grad_min, steps)
         self.set_method('vanilla')
 
 
@@ -1492,16 +1767,16 @@ class MomentumSolver(Solver):
         value of the gamma parameter. For example, if you specify {5, 9, 13},
         then the learning rate is multiplied by gamma after the fifth,
         ninth, and thirteenth epochs.
-    fcmp_learning_rate : string, optional
-        specifies the FCMP learning rate function.
 
     Returns
     -------
     :class:`MomentumSolver`
 
     '''
-    def __init__(self, lr_scheduler, use_locking=True, clip_grad_max=None, clip_grad_min=None, momentum=0.9):
-        Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min)
+    def __init__(self, momentum=0.9, learning_rate=0.001, learning_rate_policy='fixed', gamma=0.1, step_size=10,
+                 power=0.75, use_locking=True, clip_grad_max=None, clip_grad_min=None, steps=None):
+        Solver.__init__(self, learning_rate, learning_rate_policy, gamma, step_size, power, use_locking,
+                        clip_grad_max, clip_grad_min, steps)
         self.set_method('momentum')
         self.add_parameter('momentum', momentum)
 
@@ -1545,16 +1820,16 @@ class AdamSolver(Solver):
         value of the gamma parameter. For example, if you specify {5, 9, 13},
         then the learning rate is multiplied by gamma after the fifth, ninth,
         and thirteenth epochs.
-    fcmp_learning_rate : string, optional
-        specifies the FCMP learning rate function.
 
     Returns
     -------
     :class:`AdamSolver`
 
     '''
-    def __init__(self, lr_scheduler, beta1=0.9, beta2=0.999, use_locking=True, clip_grad_max=None, clip_grad_min=None):
-        Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min)
+    def __init__(self, beta1=0.9, beta2=0.999, learning_rate=0.001, learning_rate_policy='fixed', gamma=0.1,
+                 step_size=10, power=0.75, use_locking=True, clip_grad_max=None, clip_grad_min=None, steps=None):
+        Solver.__init__(self, learning_rate, learning_rate_policy, gamma, step_size, power, use_locking,
+                        clip_grad_max, clip_grad_min, steps)
         self.set_method('adam')
         self.add_parameter('beta1', beta1)
         self.add_parameter('beta2', beta2)
@@ -1608,17 +1883,17 @@ class LBFGSolver(Solver):
         of the gamma parameter. For example, if you specify {5, 9, 13}, then
         the learning rate is multiplied by gamma after the fifth, ninth, and
         thirteenth epochs.
-    fcmp_learning_rate : string, optional
-        specifies the FCMP learning rate function.
 
     Returns
     -------
     :class:`LBFGSolver`
 
     '''
-    def __init__(self, lr_scheduler, m, max_line_search_iters, max_iters, backtrack_ratio, use_locking=True,
-                 clip_grad_max=None, clip_grad_min=None):
-        Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min)
+    def __init__(self, m, max_line_search_iters, max_iters, backtrack_ratio, learning_rate=0.001,
+                 learning_rate_policy='fixed', gamma=0.1, step_size=10, power=0.75, use_locking=True,
+                 clip_grad_max=None, clip_grad_min=None, steps=None):
+        Solver.__init__(self, learning_rate, learning_rate_policy, gamma, step_size, power, use_locking,
+                        clip_grad_max, clip_grad_min, steps)
         self.set_method('lbfg')
         self.add_parameters('m', m)
         self.add_parameters('maxlinesearchiters', max_line_search_iters)
@@ -1661,16 +1936,16 @@ class NatGradSolver(Solver):
         of the gamma parameter. For example, if you specify {5, 9, 13}, then
         the learning rate is multiplied by gamma after the fifth, ninth, and
         thirteenth epochs.
-    fcmp_learning_rate : string, optional
-        specifies the FCMP learning rate function.
 
     Returns
     -------
     :class:`NatGradSolver`
 
     '''
-    def __init__(self, lr_scheduler, approximation_type=1, use_locking=True, clip_grad_max=None, clip_grad_min=None):
-        Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min)
+    def __init__(self, approximation_type=1, learning_rate=0.001, learning_rate_policy='fixed', gamma=0.1,
+                 step_size=10, power=0.75, use_locking=True, clip_grad_max=None, clip_grad_min=None, steps=None):
+        Solver.__init__(self, learning_rate, learning_rate_policy, gamma, step_size, power, use_locking,
+                        clip_grad_max, clip_grad_min, steps)
         self.set_method('natgrad')
         self.add_parameter('approximationtype', approximation_type)
 
@@ -1794,7 +2069,7 @@ class Optimizer(DLPyDict):
     :class:`Optimizer`
 
     '''
-    def __init__(self, algorithm=VanillaSolver(StepLR()), mini_batch_size=1, seed=0, max_epochs=1, reg_l1=0, reg_l2=0,
+    def __init__(self, algorithm=VanillaSolver(), mini_batch_size=1, seed=0, max_epochs=1, reg_l1=0, reg_l2=0,
                  dropout=0, dropout_input=0, dropout_type='standard', stagnation=0, threshold=0.00000001, f_conv=0,
                  snapshot_freq=0, log_level=0, bn_src_layer_warnings=True, freeze_layers_to=None, flush_weights=False,
                  total_mini_batch_size=None, mini_batch_buf_size=None):

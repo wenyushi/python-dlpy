@@ -33,196 +33,6 @@ import re
 import swat
 
 
-def plot_timeseries(tbl, timeid, timeseries, figure=None, 
-                    groupid=None, start_time=None, end_time=None, xlim=None, 
-                    ylim=None, xlabel=None, ylabel=None, xdate_format=None,
-                    title=None, figsize=None, 
-                    fontsize_spec=None, **kwargs):
-    '''
-    Create an timeseries line plot from a CASTable or pandas DataFrame
-
-    Parameters
-    ----------
-    tbl : :class:`CASTable` or :class:`pandas.DataFrame` or :class:`pandas.Series`
-        The input table for the plot. If it is CASTable, it will be fetched to 
-        the client. If it is pandas.Series, the index name will become timeid, 
-        the series name will become timeseries. 
-    timeid : str
-        The name of the timeid variable. It will be the value to be used in the 
-        x-axis.
-    timeseries : str
-        The name of the column contains the timeseries value. It will be the
-        value to be used in the y-axis.
-    figure : two-element-tuple, optional
-        The tuple must be in the form (:class:`matplotlib.figure.Figure`,
-        :class:`matplotlib.axes.Axes`). These are the figure and axes that the
-        user wants to plot on. It can be used to plot new timeseries plot on
-        pre-existing figures.
-        Default: None
-    groupid : dict, optional
-        It is in the format {column1 : value1, column2 : value2, ...}.
-        It is used to plot subset of the data where column1 = value1 and 
-        column2 = value2, etc.
-        Default: None, which means do not subset the data.
-    start_time : :class:`datetime.datetime` or :class:`datetime.date`, optional
-        The start time of the plotted timeseries. 
-        Default: None, which means the plot starts at the beginning of the
-        timeseries. 
-    end_time : :class:`datetime.datetime` or :class:`datetime.date`, optional
-        The end time of the plotted timeseries.
-        Default: None, which means the plot ends at the end of the timeseries.
-    xlim : tuple, optional
-        Set the data limits for the x-axis.
-        Default: None
-    ylim : tuple, optional
-        Set the data limits for the y-axis.
-        Default: None
-    xlabel : string, optional
-        Set the label for the x-axis.
-    ylabel : string, optional
-        Set the label for the y-axis.
-    xdate_format : string, optional
-        If the x-axis represents date or datetime, this is the date or datetime 
-        format string. (e.g. '%Y-%m-%d' is the format of 2000-03-10, 
-        refer to documentation for :meth:`datetime.datetime.strftime`)
-        Default: None
-    title : string, optional
-        Set the title of the figure.
-        Default: None
-    figsize : tuple, optional
-        The size of the figure.
-        Default: None
-    fontsize_spec : dict, optional
-        It specifies the fontsize for 'xlabel', 'ylabel', 'xtick', 'ytick', 
-        'legend' and 'title'. (e.g. {'xlabel':14, 'ylabel':14}).
-        If None, and figure is specified, then it will take from provided
-        figure object. Otherwise, it will take the default fontsize, which are
-        {'xlabel':16, 'ylabel':16, 'xtick':14, 'ytick':14, 'legend':14, 'title':20}
-        Default: None
-    `**kwargs` : keyword arguments, optional
-        Options to pass to matplotlib plotting method.    
-
-    Returns
-    -------
-    (:class:`matplotlib.figure.Figure`, :class:`matplotlib.axes.Axes`)
-
-    '''
-    default_fontsize_spec = {'xlabel':16, 'ylabel':16, 'xtick':14,
-                             'ytick':14, 'legend':14, 'title':20}
-    
-    if figure is None:
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-        
-        if fontsize_spec is not None:
-            default_fontsize_spec.update(fontsize_spec)
-            
-        fontsize_spec = default_fontsize_spec
-    else:
-        fig, ax = figure
-        if fontsize_spec is None:
-            fontsize_spec = {}
-            
-        if 'legend' not in fontsize_spec.keys():
-            fontsize_spec['legend'] = default_fontsize_spec['legend']
-        
-    if isinstance(tbl, CASTable):
-        if groupid is None:
-            tbl = tbl.to_frame()
-        else:
-            where_clause_list = []
-            for gid in groupid.keys():
-                where_clause_list.append(gid + '=' + str(groupid[gid]))
-                
-            where_clause = ' and '.join(where_clause_list)
-            tbl = tbl.query(where_clause)
-            tbl = tbl.to_frame()
-    else:
-        if isinstance(tbl, pd.Series):
-            timeseries = tbl.name
-            tbl = tbl.reset_index()
-            timeid = [colname for colname in tbl.columns if colname != timeseries][0]
-            
-        if groupid is not None:
-            for gid in groupid.keys():
-                tbl = tbl.loc[tbl[gid]==groupid[gid]]
-
-    if not (np.issubdtype(tbl[timeid].dtype, np.integer) or
-            np.issubdtype(tbl[timeid].dtype, np.floating)):
-        tbl[timeid] = pd.to_datetime(tbl[timeid])
-        fig.autofmt_xdate()
-        if xdate_format is not None:
-            import matplotlib.dates as mdates
-            xfmt = mdates.DateFormatter(xdate_format)
-            ax.xaxis.set_major_formatter(xfmt)
-                
-    if start_time is not None:
-        if isinstance(start_time, datetime.date):
-            start_time = pd.Timestamp(start_time)
-            
-        tbl = tbl.loc[tbl[timeid]>=start_time]
-    
-    if end_time is not None:
-        if isinstance(start_time, datetime.date):
-            end_time = pd.Timestamp(end_time)
-            
-        tbl = tbl.loc[tbl[timeid]<=end_time]
-        
-    tbl = tbl.sort_values(timeid)
-               
-    ax.plot(tbl[timeid], tbl[timeseries], **kwargs)
-    
-    if xlabel is not None:    
-        if 'xlabel' in fontsize_spec.keys():
-            ax.set_xlabel(xlabel, fontsize=fontsize_spec['xlabel'])
-        else:
-            ax.set_xlabel(xlabel)
-    elif figure is not None:
-        if 'xlabel' in fontsize_spec.keys():
-            ax.set_xlabel(ax.get_xlabel(), fontsize=fontsize_spec['xlabel'])
-    else:
-        ax.set_xlabel(timeid, fontsize=fontsize_spec['xlabel'])
-            
-        
-    if ylabel is not None:
-        if 'ylabel' in fontsize_spec.keys():
-            ax.set_ylabel(ylabel, fontsize=fontsize_spec['ylabel'])
-        else:
-            ax.set_ylabel(ylabel)
-    elif figure is not None:
-        if 'ylabel' in fontsize_spec.keys():
-            ax.set_ylabel(ax.get_ylabel(), fontsize=fontsize_spec['ylabel'])
-    else:
-        ax.set_ylabel(timeseries, fontsize=fontsize_spec['ylabel'])
-    
-    if xlim is not None:    
-        ax.set_xlim(xlim)
-        
-    if ylim is not None:
-        ax.set_ylim(ylim)
-        
-    if title is not None:
-        if 'title' in fontsize_spec.keys():
-            ax.set_title(title, fontsize=fontsize_spec['title'])
-        else:
-            ax.set_title(title)
-    elif figure is not None:
-        if 'title' in fontsize_spec.keys():
-            ax.set_title(ax.get_title(), fontsize=fontsize_spec['title'])
-        
-    ax.legend(loc='best', bbox_to_anchor=(1, 1), prop={'size': fontsize_spec['legend']})
-    if 'xtick' in fontsize_spec.keys():
-        ax.get_xaxis().set_tick_params(direction='out', labelsize=fontsize_spec['xtick'])
-    else:
-        ax.get_xaxis().set_tick_params(direction='out')
-        
-    if 'ytick' in fontsize_spec.keys():
-        ax.get_yaxis().set_tick_params(direction='out', labelsize=fontsize_spec['ytick'])
-    else:
-        ax.get_yaxis().set_tick_params(direction='out') 
-    
-     
-    return (fig, ax)
-        
 
 class TimeseriesTable(CASTable):
     '''
@@ -255,6 +65,11 @@ class TimeseriesTable(CASTable):
         It will be created by the prepare_subsequences method.
         Default: None
 
+    Attributes
+    ----------
+    timeid_type : string
+         Specifies whether the table uses 'date' or 'datetime' format
+
     Returns
     -------
     :class:`TimeseriesTable`
@@ -263,12 +78,18 @@ class TimeseriesTable(CASTable):
     running_caslib = None
 
     def __init__(self, name, timeid=None, groupby_var=None,  
-                 sequence_opt=None, inputs_target=None, **table_params):
+                 sequence_opt=None, inputs_target=None, target=None,
+                 autoregressive_sequence=None, acc_interval=None,
+                 **table_params):
         CASTable.__init__(self, name, **table_params)
         self.timeid = timeid
         self.groupby_var = groupby_var                   
         self.sequence_opt = sequence_opt
         self.inputs_target = inputs_target
+        self.target = target
+        self.autoregressive_sequence=autoregressive_sequence
+        self.acc_interval=acc_interval
+
 
     @classmethod
     def from_table(cls, tbl, columns=None, casout=None):
@@ -308,7 +129,7 @@ class TimeseriesTable(CASTable):
             casout_params = casout
 
         if 'name' not in casout_params:
-            casout_params['name'] = random_name('Timeseries', 6)
+            casout_params['name'] = random_name('ts', 4)
             
         output_tbl_name = casout_params['name']
         
@@ -376,7 +197,7 @@ class TimeseriesTable(CASTable):
             casout_params = casout
 
         if 'name' not in casout_params:
-            casout_params['name'] = random_name('Timeseries', 6)
+            casout_params['name'] = random_name('ts', 4)
             
         output_tbl_name = casout_params['name']
         
@@ -429,7 +250,7 @@ class TimeseriesTable(CASTable):
             casout_params = casout
 
         if 'name' not in casout_params:
-            casout_params['name'] = random_name('Timeseries', 6)
+            casout_params['name'] = random_name('ts', 4)
             
         if importoptions is None:
             importoptions = {}
@@ -488,7 +309,7 @@ class TimeseriesTable(CASTable):
             casout_params = casout
 
         if 'name' not in casout_params:
-            casout_params['name'] = random_name('Timeseries', 6)
+            casout_params['name'] = random_name('ts', 4)
             
         if importoptions is None:
             importoptions = {}
@@ -814,6 +635,8 @@ class TimeseriesTable(CASTable):
             yet the timeid variable is in the date format. 
                              ''')   
 
+        self.acc_interval = acc_interval
+
         if acc_method_byvar is None:
             acc_method_byvar = {}
         
@@ -845,15 +668,15 @@ class TimeseriesTable(CASTable):
             table={'groupby':self.groupby_var,'name': input_tbl_name},
             series=serieslist,
             timeid=self.timeid,
-            interval=acc_interval,
+            interval=self.acc_interval,
             trimid='BOTH',
             sumout=dict(name=input_tbl_name + '_summary', replace=True),
             casout=dict(name=input_tbl_name, replace=True))
         
-        if acc_interval.startswith('dt'):            
-            print('NOTE: Timeseries are accumulated to the frequency of {}'.format(acc_interval[2:]))
+        if self.acc_interval.startswith('dt'):
+            print('NOTE: Timeseries are accumulated to the frequency of {}'.format(self.acc_interval[2:]))
         else:
-            print('NOTE: Timeseries are accumulated to the frequency of {}'.format(acc_interval))
+            print('NOTE: Timeseries are accumulated to the frequency of {}'.format(self.acc_interval))
         
     def prepare_subsequences(self, seq_len, target, predictor_timeseries=None,
                              timeid=None, groupby=None,
@@ -976,33 +799,35 @@ class TimeseriesTable(CASTable):
         if self.seq_len < 1:
             raise ValueError('''RNN sequence length at least need to be 1''')     
         
-        sasCode = 'data {0}; set {0}; by {1} {2};'.format(
+        sascode = 'data {0}; set {0}; by {1} {2};'.format(
                 input_tbl_name, ' '.join(self.groupby_var), self.timeid)
         
         if self.seq_len > 1:
             for var in self.independent_pred:
-                sasCode += self.create_lags(var, self.seq_len - 1, self.groupby_var)
+                sascode += self.create_lags(var, self.seq_len - 1, self.groupby_var)
         
         if self.auto_regressive:
-            sasCode += self.create_lags(self.target, self.seq_len, self.groupby_var)
+            sascode += self.create_lags(self.target, self.seq_len, self.groupby_var)
          
-        sasCode += '{0} = {1};'.format(input_length_name, self.seq_len)
-        sasCode += '{} = 1;'.format(target_length_name) # Currently only support one timestep numeric output.
+        sascode += '{0} = {1};'.format(input_length_name, self.seq_len)
+        sascode += '{} = 1;'.format(target_length_name) # Currently only support one timestep numeric output.
         if missing_handling == 'drop':
-            sasCode += 'if not cmiss(of _all_) then output {};'.format(input_tbl_name)
-        sasCode += 'run;'
+            sascode += 'if not cmiss(of _all_) then output {};'.format(input_tbl_name)
+        sascode += 'run;'
         if len(self.groupby_var) == 0:
-            conn.retrieve('dataStep.runCode', _messagelevel='error', code=sasCode, 
+            conn.retrieve('dataStep.runCode', _messagelevel='error', code=sascode,
                            single='Yes')
         else:
-            conn.retrieve('dataStep.runCode', _messagelevel='error', code=sasCode)
+            conn.retrieve('dataStep.runCode', _messagelevel='error', code=sascode)
             
         self.input_vars = []
-        
+        self.autoregressive_sequence = []
+
         for i in range(self.seq_len):
             if self.auto_regressive:
                 self.input_vars.append('{0}_lag{1}'.format(self.target, i+1))
-            
+                self.autoregressive_sequence.append('{0}_lag{1}'.format(self.target, i+1))
+
             for var in self.independent_pred:
                 if i == 0:
                     self.input_vars.append(var)
@@ -1010,7 +835,8 @@ class TimeseriesTable(CASTable):
                     self.input_vars.append('{0}_lag{1}'.format(var, i))
         
         self.input_vars.reverse()
-                    
+        self.autoregressive_sequence.reverse()
+
         self.tokensize = len(predictor_timeseries)
         
         self.sequence_opt = dict(input_length=input_length_name, 
@@ -1167,13 +993,19 @@ class TimeseriesTable(CASTable):
         conn.retrieve('dataStep.runCode', _messagelevel='error', code=splitting_code)
         
         train_out = dict(name=traintbl_name, timeid=self.timeid, groupby_var=self.groupby_var,
-                         sequence_opt=self.sequence_opt, inputs_target=self.inputs_target)
+                         sequence_opt=self.sequence_opt, inputs_target=self.inputs_target,
+                         target=self.target, autoregressive_sequence = self.autoregressive_sequence,
+                         acc_interval=self.acc_interval)
         
         valid_out = dict(name=validtbl_name, timeid=self.timeid, groupby_var=self.groupby_var,
-                         sequence_opt=self.sequence_opt, inputs_target=self.inputs_target)
+                         sequence_opt=self.sequence_opt, inputs_target=self.inputs_target,
+                         target=self.target, autoregressive_sequence = self.autoregressive_sequence,
+                         acc_interval=self.acc_interval)
                 
         test_out = dict(name=testtbl_name, timeid=self.timeid, groupby_var=self.groupby_var,
-                         sequence_opt=self.sequence_opt, inputs_target=self.inputs_target)  
+                         sequence_opt=self.sequence_opt, inputs_target=self.inputs_target,
+                         target=self.target, autoregressive_sequence = self.autoregressive_sequence,
+                         acc_interval=self.acc_interval)
         
         train_out_tbl = TimeseriesTable(**train_out)
         train_out_tbl.set_connection(conn)
@@ -1262,18 +1094,18 @@ class TimeseriesTable(CASTable):
         
         byvar_strlist = ['first.{}'.format(var) for var in byvar]            
        
-        sasCode = ''
+        sascode = ''
         for i in range(nlags):
             if i == 0:
-                sasCode += '{0}_lag{1} = lag({0});'.format(varname, i+1)
+                sascode += '{0}_lag{1} = lag({0});'.format(varname, i+1)
             else:
-                sasCode += '{0}_lag{1} = lag({0}_lag{2});'.format(varname, i+1, i)
+                sascode += '{0}_lag{1} = lag({0}_lag{2});'.format(varname, i+1, i)
                 
             if len(byvar) > 0:
-                sasCode += 'if ' + ' or '.join(byvar_strlist)
-                sasCode += ' then {0}_lag{1} = .;'.format(varname, i+1)
+                sascode += 'if ' + ' or '.join(byvar_strlist)
+                sascode += ' then {0}_lag{1} = .;'.format(varname, i+1)
             
-        return sasCode     
+        return sascode
 
     @staticmethod
     def find_file_caslib(conn, path):
@@ -1319,6 +1151,240 @@ class TimeseriesTable(CASTable):
                     return (caslibname, rest_path)
         
         return (None, None)
+
+
+
+
+def _get_first_obs(tbl, timeid, groupby=None, casout=None):
+
+    input_tbl_name = tbl.name
+
+    conn = tbl.get_connection()
+
+    if casout is None:
+        casout_params = {}
+    elif isinstance(casout, CASTable):
+        casout_params = casout.to_outtable_params()
+    elif isinstance(casout, dict):
+        casout_params = casout
+
+    if 'name' not in casout_params:
+        casout_params['name'] = random_name(input_tbl_name + '_first', 2)
+        if len(casout_params['name']) >= 32:
+            casout_params['name'] = random_name('tmp_first', 2)
+
+    output_tbl_name = casout_params['name']
+
+    if groupby is None:
+        groupby = []
+    elif not isinstance(groupby, list):
+        groupby = [groupby]
+
+    if not groupby:
+        sascode = '''
+        data {0};
+        set {1};
+        by {2};
+        if _N_=1 then output {0};
+        run;      
+        '''.format(output_tbl_name, input_tbl_name, timeid, output_tbl_name)
+        conn.retrieve('dataStep.runCode', _messagelevel='error', code=sascode, single='Yes')
+    else:
+        groupby_str = ' '.join(groupby)
+        sascode = 'data {}; set {}; by {} {};'.format(output_tbl_name,
+                        input_tbl_name, groupby_str, timeid)
+
+        condition_str = ['first.' + group for group in groupby]
+        condition_str = ' or '.join(condition_str)
+        sascode += 'if {} then output {};'.format(condition_str, output_tbl_name)
+        sascode += 'run;'
+
+        conn.retrieve('dataStep.runCode', _messagelevel='error', code=sascode)
+
+    out = conn.CASTable(**casout_params)
+
+    return out
+
+def _get_last_obs(tbl, timeid, groupby=None, casout=None):
+
+    input_tbl_name = tbl.name
+
+    conn = tbl.get_connection()
+
+    if casout is None:
+        casout_params = {}
+    elif isinstance(casout, CASTable):
+        casout_params = casout.to_outtable_params()
+    elif isinstance(casout, dict):
+        casout_params = casout
+
+    if 'name' not in casout_params:
+        casout_params['name'] = random_name(input_tbl_name + '_last', 2)
+        if len(casout_params['name']) >= 32:
+            casout_params['name'] = random_name('tmp_last', 2)
+
+    output_tbl_name = casout_params['name']
+
+    if groupby is None:
+        groupby = []
+    elif not isinstance(groupby, list):
+        groupby = [groupby]
+
+    if not groupby:
+        sascode = '''
+        data {0};
+        set {1} end=eof;
+        by {2};
+        if eof then output {0};
+        run;      
+        '''.format(output_tbl_name, input_tbl_name, timeid, output_tbl_name)
+        conn.retrieve('dataStep.runCode', _messagelevel='error', code=sascode, single='Yes')
+    else:
+        groupby_str = ' '.join(groupby)
+        sascode = 'data {}; set {}; by {} {};'.format(output_tbl_name,
+                        input_tbl_name, groupby_str, timeid)
+
+        condition_str = ['last.' + group for group in groupby]
+        condition_str = ' or '.join(condition_str)
+        sascode += 'if {} then output {};'.format(condition_str, output_tbl_name)
+        sascode += 'run;'
+
+        conn.retrieve('dataStep.runCode', _messagelevel='error', code=sascode)
+
+    out = conn.CASTable(**casout_params)
+
+    return out
+
+def _combine_table(tbl1=None, tbl2=None, columns=None, casout=None):
+
+    conn = tbl1.get_connection()
+
+    if casout is None:
+        casout_params = {}
+    elif isinstance(casout, CASTable):
+        casout_params = casout.to_outtable_params()
+    elif isinstance(casout, dict):
+        casout_params = casout
+
+    if 'name' not in casout_params:
+        prefix = ''
+        if tbl1 is not None:
+            prefix += '_{}'.format(tbl1.name)
+
+        if tbl2 is not None:
+            prefix += '_{}'.format(tbl2.name)
+
+        prefix = prefix.strip('_')
+        casout_params['name'] = random_name(prefix, 1)
+        if len(casout_params['name']) >= 32:
+            casout_params['name'] = random_name('tmp_combine', 2)
+
+
+    output_tbl_name = casout_params['name']
+
+    if columns is None:
+        keeps_str = ''
+    else:
+        if not isinstance(columns, list):
+            columns = [columns]
+
+        keeps_str = '(keep={})'.format(' '.join(columns))
+
+    if tbl1 is None:
+        sascode = '''
+        data {};
+        set {}{};
+        run;
+        '''.format(output_tbl_name, tbl2.name, keeps_str)
+    elif tbl2 is None:
+        sascode = '''
+        data {};
+        set {}{};
+        run;
+        '''.format(output_tbl_name, tbl1.name, keeps_str)
+    else:
+        sascode = '''
+        data {};
+        set {}{} {}{};
+        run;
+        '''.format(output_tbl_name, tbl1.name, keeps_str, tbl2.name, keeps_str)
+
+    conn.retrieve('dataStep.runCode', _messagelevel='error', code=sascode)
+    out = conn.CASTable(**casout_params)
+
+    return out
+
+
+def _prepare_next_input(tbl, timeid, timeid_interval, autoregressive_series,
+                        sequence_opt, covar_tbl=None, groupby=None, casout=None):
+
+    conn = tbl.get_connection()
+
+    if casout is None:
+        casout_params = {}
+    elif isinstance(casout, CASTable):
+        casout_params = casout.to_outtable_params()
+    elif isinstance(casout, dict):
+        casout_params = casout
+
+    if 'name' not in casout_params:
+        casout_params['name'] = random_name('next_input', 6)
+
+    output_tbl_name = casout_params['name']
+
+    if groupby is None:
+        groupby = []
+    elif not isinstance(groupby, list):
+        groupby = [groupby]
+
+    keeps_str = groupby + [timeid] + autoregressive_series[:-1]
+    keeps_str += [sequence_opt['input_length'], sequence_opt['target_length']]
+    keeps_str = ' '.join(keeps_str)
+
+    assignment = []
+    for i in range(len(autoregressive_series)-1):
+        assignment += [autoregressive_series[i] + '=' + autoregressive_series[i+1]]
+
+    assignment = ';'.join(assignment)
+
+    sascode='''
+    data {};
+    set {};
+    {} = intnx('{}', {}, 1);
+    {};
+    keep {};
+    run;
+    '''.format(output_tbl_name, tbl.name, timeid, timeid_interval,
+    timeid, assignment, keeps_str)
+
+    conn.retrieve('dataStep.runCode', _messagelevel='error', code=sascode)
+
+    if covar_tbl is not None:
+        merge_by = groupby + [timeid]
+        merge_by = ' '.join(merge_by)
+        drops = autoregressive_series[:-1] + [sequence_opt['input_length'], sequence_opt['target_length']]
+        drops = [var for var in drops if var in covar_tbl.columns.tolist()]
+        drops = ' '.join(drops)
+        sascode='''
+        data {};
+        merge {}(drop={} IN=in1) {}(IN=in2);
+        by {};
+        if in1=1 and in2=1 then output {};
+        run;
+        '''.format(output_tbl_name, covar_tbl.name, drops, output_tbl_name,
+        merge_by, output_tbl_name)
+
+        conn.retrieve('dataStep.runCode', _messagelevel='error', code=sascode)
+
+    out = conn.CASTable(**casout_params)
+
+    return out
+
+
+
+
+
+
 
 
 
