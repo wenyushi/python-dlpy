@@ -572,6 +572,40 @@ class TestNetwork(tm.TestCase):
         self.assertEqual(model.summary['Output Size'].values[-2], 3)
         model.print_summary()
 
+    def test_faster(self):
+        from dlpy.applications import ResNet18_Caffe
+        model_resnet18 = ResNet18_Caffe(self.s, n_classes = 6, random_crop = 'none', width = 400, height = 400)
+        backbone = model_resnet18.to_functional_model(model_resnet18.layers[-2])
+        inp = Input(**backbone.layers[0].config)
+        res8 = backbone(inp)
+        n_classes = 1
+        OrigAnchorNum = 9
+        conv1 = Conv2d(act = 'relu', width = 3, n_filters = 512,
+                       name = 'rpn_conv_3x3')(res8)
+        conv2 = Conv2d(act = 'identity', width = 1, n_filters = ((n_classes + 1 + 4) * OrigAnchorNum),
+                       name = 'rpn_score')(conv1)
+        rp1 = RegionProposal(max_label_per_image = 200, base_anchor_size = 16, coord_type = 'coco', name = 'rois',
+                             anchor_num_to_sample = 128,  #
+                             anchor_scale = [8, 16, 32],
+                             anchor_ratio = [0.5, 1, 2],
+                             proposed_roi_num_train = 1000, proposed_roi_num_score = 100,
+                             roi_train_sample_num = 128 / 2
+                             )(conv2)
+        if isinstance(res8, (list, tuple)):
+            concat1 = Concat()([backbone.layers[-6].tensor] + res8)
+        else:
+            concat1 = Concat()([backbone.layers[-6].tensor, res8])
+        roipool1 = ROIPooling(output_height = 7, output_width = 7, spatial_scale = 1.0 / 32, name = 'pool5')(
+            [concat1, rp1])
+        dense1 = Dense(n = 1024, act = 'relu', name = 'fc6')(roipool1)
+        dense2 = Dense(n = 1024, act = 'relu', name = 'fc7')(dense1)
+        cls1 = Dense(n = n_classes + 1, act = 'identity', name = 'cls_score')(dense2)
+        reg1 = Dense(n = (n_classes + 1) * 4, act = 'identity', name = 'bbox_pred')(dense2)
+        fr1 = FastRCNN(nms_iou_threshold = 0.3, detection_threshold = 0.1,
+                       class_number = n_classes, name = 'fastrcnn')([cls1, reg1, rp1])
+        faster_rcnn = Model(self.s, inp, fr1)
+        faster_rcnn.compile()
+
 
     @classmethod
     def tearDownClass(cls):

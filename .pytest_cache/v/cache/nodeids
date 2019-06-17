@@ -1,6 +1,7 @@
 [
   "dlpy/tests/test_network.py::TestNetwork::test_concat",
   "dlpy/tests/test_network.py::TestNetwork::test_duplicated_src_layers_call",
+  "dlpy/tests/test_network.py::TestNetwork::test_faster",
   "dlpy/tests/test_network.py::TestNetwork::test_from_model",
   "dlpy/tests/test_network.py::TestNetwork::test_given_name",
   "dlpy/tests/test_network.py::TestNetwork::test_inputs",

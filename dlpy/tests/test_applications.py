@@ -422,3 +422,8 @@ class TestApplications(unittest.TestCase):
         from dlpy.applications import MobileNetV2
         model = MobileNetV2(self.s)
         model.print_summary()
+
+    def test_fast_rcnn(self):
+        from dlpy.applications import Faster_RCNN
+        model = Faster_RCNN(self.s)
+        model.print_summary()

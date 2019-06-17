@@ -125,7 +125,7 @@ class Network(Layer):
             if start in self.layers:
                 return
             # if the node is an input layer, add it and return
-            if start in self.input_layers and start.type != 'model':
+            if start.type == 'input' and start.type != 'model':
                 self.layers.append(start)
                 return
             for src_layer in start.src_layers:
@@ -148,7 +148,7 @@ class Network(Layer):
         self.inputs = inputs
         self.outputs = outputs
         self.output_layers = [output._op for output in outputs]
-        self.input_layers = [input._op for input in inputs]
+        self.input_layers = [input_._op for input_ in inputs]
 
         for layer in self.output_layers:
             build_map(layer)

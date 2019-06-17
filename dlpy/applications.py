@@ -4633,14 +4633,14 @@ def Faster_RCNN(conn, n_channels=3, width=1000, height=496, scale=1,
                          )(rpn_score)
     roipool1 = ROIPooling(output_height=roi_pooling_height, output_width=roi_pooling_width,
                           spatial_scale=conv5_3.shape[0]/width,
-                          name = 'roi_pooling')([conv5_3 + rp1])
+                          name = 'roi_pooling')([conv5_3, rp1])
 
     fc6 = Dense(n = 4096, act = 'relu', name = 'fc6')(roipool1)
     fc7 = Dense(n = 4096, act = 'relu', name = 'fc7')(fc6)
     cls1 = Dense(n = n_classes+1, act = 'identity', name = 'cls_score')(fc7)
     reg1 = Dense(n = (n_classes+1)*4, act = 'identity', name = 'bbox_pred')(fc7)
     fr1 = FastRCNN(nms_iou_threshold = nms_iou_threshold, max_label_per_image = max_label_per_image,
-                   max_objec_num = max_objec_num,  detection_threshold = detection_threshold,
+                   max_object_num = max_objec_num,  detection_threshold = detection_threshold,
                    class_number = n_classes, name = 'fastrcnn')([cls1, reg1, rp1])
     faster_rcnn = Model(conn, inp, fr1)
     faster_rcnn.compile()
