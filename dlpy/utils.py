@@ -342,26 +342,31 @@ def find_caslib(conn, path):
         return None
 
 
-def get_imagenet_labels_table(conn):
+def get_imagenet_labels_table(conn, label_length=None):
     temp_name = random_name('new_label_table', 6)
 
     filename = os.path.join('datasources', 'imagenet_labels.csv')
     project_path = os.path.dirname(os.path.abspath(__file__))
     full_filename = os.path.join(project_path, filename)
 
-    return get_user_defined_labels_table(conn, full_filename)
+    return get_user_defined_labels_table(conn, full_filename, label_length)
 
 
-def get_user_defined_labels_table(conn, label_file_name):
+def get_user_defined_labels_table(conn, label_file_name, label_length=None):
     temp_name = random_name('new_label_table', 6)
 
     full_filename = label_file_name
+
+    if label_length is None:
+        char_length = 200
+    else:
+        char_length = label_length
 
     labels = pd.read_csv(full_filename, skipinitialspace=True, index_col=False)
     conn.upload_frame(labels, casout=dict(name=temp_name, replace=True),
                       importoptions={'vars':[
                           {'name': 'label_id', 'type': 'int64'},
-                          {'name': 'label', 'type': 'char', 'length': 200}]})
+                          {'name': 'label', 'type': 'char', 'length': char_length}]})
 
     return conn.CASTable(temp_name)
 
@@ -432,7 +437,7 @@ def caslibify(conn, path, task='save'):
             remaining_path += sep
 
         if caslib is not None:
-            return caslib, remaining_path
+            return caslib, remaining_path, False
         else:
             new_caslib = random_name('Caslib', 6)
             rt = conn.retrieve('addcaslib', _messagelevel='error', name=new_caslib, path=path,
@@ -441,7 +446,7 @@ def caslibify(conn, path, task='save'):
             if rt.severity > 1:
                 raise DLPyError('something went wrong while adding the caslib for the specified path.')
             else:
-                return new_caslib, ''
+                return new_caslib, '', True
     else:
         server_type = get_cas_host_type(conn).lower()
         if server_type.startswith("lin") or server_type.startswith("osx"):
@@ -452,10 +457,10 @@ def caslibify(conn, path, task='save'):
         if len(path_split) == 2:
             caslib = find_caslib(conn, path_split[0])
             if caslib is not None:
-                return caslib, path_split[1]
+                return caslib, path_split[1], False
             else:
-                caslib = random_name('Caslib', 6)
-                rt = conn.retrieve('addcaslib', _messagelevel='error', name=caslib, path=path_split[0],
+                new_caslib = random_name('Caslib', 6)
+                rt = conn.retrieve('addcaslib', _messagelevel='error', name=new_caslib, path=path_split[0],
                                    activeonadd=False, subdirectories=True, datasource={'srctype': 'path'})
 
                 if rt.severity > 1:
@@ -463,9 +468,9 @@ def caslibify(conn, path, task='save'):
                           'is part of an existing caslib. A workaround is to put the file under that subpath or'
                           'move to a different location. It sounds and is inconvenient but it is to protect '
                           'your privacy granted by your system admin.')
-                    return None, None
+                    return None, None, False
                 else:
-                    return caslib, path_split[1]
+                    return new_caslib, path_split[1], True
         else:
             raise DLPyError('we need more than one level of directories. e.g., /dir1/dir2 ')
 
@@ -841,7 +846,7 @@ def get_max_objects(cas_table):
 
 def filter_by_filename(cas_table, filename, filtered_name=None):
     '''
-    Filteres CASTable by filename using '_path_' or '_filename_0' column
+    Filters CASTable by filename using '_path_' or '_filename_0' column
 
     Parameters
     ----------
@@ -872,6 +877,8 @@ def filter_by_filename(cas_table, filename, filtered_name=None):
     if '_path_' not in cas_table.columns.tolist() and '_filename_0' not in cas_table.columns.tolist():
         raise ValueError('\'_path_\' or \'_filename_0\' column not found in CASTable : {}'.format(cas_table.name))
     if isinstance(filename, list):
+        if not all(isinstance(x, str) for x in filename):
+            raise ValueError('filename must be a string or a list of strings')
         image_id = []
         for name in filename:
             if '_path_' in cas_table.columns.tolist():
@@ -887,6 +894,8 @@ def filter_by_filename(cas_table, filename, filtered_name=None):
             image_id = cas_table[cas_table['_path_'].str.contains(filename)]['_id_'].tolist()
         elif '_filename_0' in cas_table.columns.tolist():
             image_id = cas_table[cas_table['_filename_0'].str.contains(filename)]['_id_'].tolist()
+    else:
+        raise ValueError('filename must be a string or a list of strings')
 
     if not image_id:
         raise ValueError('filename: {} not found in \'_path_\' or'
@@ -1185,7 +1194,7 @@ def create_object_detection_table(conn, data_path, coord_type, output,
 
     det_img_table = random_name('DET_IMG')
 
-    caslib, path_after_caslib = caslibify(conn, data_path, task='load')
+    caslib, path_after_caslib, tmp_caslib = caslibify(conn, data_path, task='load')
     if caslib is None and path_after_caslib is None:
         print('Cannot create a caslib for the provided path. Please make sure that the path is accessible from'
               'the CAS Server. Please also check if there is a subpath that is part of an existing caslib')
@@ -1215,7 +1224,7 @@ def create_object_detection_table(conn, data_path, coord_type, output,
         else:
             print("NOTE: Images are processed.")
 
-    if caslib is not None:
+    if (caslib is not None) and tmp_caslib:
         conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib)
 
     with sw.option_context(print_messages = False):
@@ -1456,7 +1465,7 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
     annotation_data_is_in_the_client = 0
     label_files = []
     with sw.option_context(print_messages=False):
-        caslib_annotation, path_after_ann_caslib = caslibify(conn, annotation_path, task='save')
+        caslib_annotation, path_after_ann_caslib, tmp_caslib = caslibify(conn, annotation_path, task='save')
         if caslib_annotation is None:
             caslib_annotation = random_name('Caslib', 6)
             rt = conn.retrieve('addcaslib', _messagelevel = 'error', name = caslib_annotation, path = annotation_path,
@@ -1493,10 +1502,10 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
     if len(label_files) == 0:
         raise DLPyError('There is no annotation file in the annotation_path.')
 
-    if caslib_annotation is not None:
+    if (caslib_annotation is not None) and tmp_caslib:
         conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib_annotation)
 
-    caslib, path_after_caslib = caslibify(conn, data_path, task='load')
+    caslib, path_after_caslib, tmp_caslib = caslibify(conn, data_path, task='load')
     if caslib is None and path_after_caslib is None:
         print('Cannot create a caslib for the provided (i.e., '+data_path+') path. Please make sure that the '
                                                                           'path is accessible from'
@@ -1529,7 +1538,7 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
         else:
             print("NOTE: Images are processed.")
 
-    if caslib is not None:
+    if (caslib is not None) and tmp_caslib:
         conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib)
         caslib=None
 
@@ -1545,7 +1554,9 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
         var_name = coco_var_name
 
     if annotation_data_is_in_the_client == 0:
-        caslib_annotation, path_after_ann_caslib = caslibify(conn, annotation_path, task='save')
+        caslib_annotation, path_after_ann_caslib, tmp_caslib = caslibify(conn, annotation_path, task='save')
+    else:
+        tmp_caslib = False
 
     label_tbl_name = random_name('obj_det')
     idjoin_format_length = len(max(label_files, key=len)) - len('.txt')
@@ -1651,10 +1662,7 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
             conn.table.droptable('output{}'.format(var))
         conn.table.droptable(det_img_table)
 
-    if caslib is not None:
-        conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib)
-
-    if caslib_annotation is not None:
+    if (caslib_annotation is not None) and tmp_caslib:
         conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib_annotation)
 
     print("NOTE: Object detection table is successfully created.")
@@ -1662,6 +1670,13 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
 
 
 def _ntuple(n):
+    '''
+    create a function used to generate a tuple with length of n
+
+    n : int
+        specifies the length of the tuple.
+
+    '''
     def parse(x):
         if isinstance(x, collections.Iterable):
             return x
@@ -1674,6 +1689,25 @@ _triple = _ntuple(3)
 
 
 def parameter_2d(param1, param2, param3, default_value):
+    '''
+    a help function to generate layer properties such as strides, padding, output_padding.
+
+    For example:
+        parameter_2d(param1=None, param2=None, param3=None, default_value=(4, 4)) would return (4, 4)
+        parameter_2d(param1=2, param2=3, param3=2, default_value=(4, 4)) would return (3, 2)
+        parameter_2d(param1=2, param2=None, param3=None, default_value=(4, 4)) would return (2, 2)
+        parameter_2d(param1=None, param2=None, param3=2, default_value=(4, 4)) would return (4, 2)
+
+    param1 : int
+        specifies the layer option, such as stride, padding, output_padding
+    param2 : int
+        specifies the layer option related to the first dimension, such as stride_vertical, padding_height
+    param3 : int
+        specifies the layer option related to the second dimension, such as stride_horizontal, padding_width
+    default_value : tuple
+        specifies default value
+
+    '''
     if param1 is not None:
         return _pair(param1)
     elif not any([param2, param3]):

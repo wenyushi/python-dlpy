@@ -42,6 +42,8 @@ class ImageTable(CASTable):
         The count of images in different categories.
     channel_means : tuple of double
         The mean of the image intensities in each channels.
+    uid : pandas.DataFrame
+        The unique ID for each image
 
     Returns
     -------
@@ -192,7 +194,9 @@ class ImageTable(CASTable):
             casout['name'] = random_name()
 
         if caslib is None:
-            caslib, path = caslibify(conn, path, task='load')
+            caslib, path, tmp_caslib = caslibify(conn, path, task='load')
+        else:
+            tmp_caslib = False
 
         if caslib is None and path is None:
             print('Cannot create a caslib for the provided path. Please make sure that the path is accessible from'
@@ -223,7 +227,7 @@ class ImageTable(CASTable):
         out.set_connection(conn)
 
         # drop the temp caslib
-        if caslib is not None:
+        if (caslib is not None) and tmp_caslib:
             conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib)
 
         return out
@@ -321,9 +325,6 @@ class ImageTable(CASTable):
             If not specified, height will be set to be equal to width.
         inplace : bool, optional
             Specifies whether to update the original table, or to create a new one.
-        columns : list of str, optional
-            Specifies the extra columns in the image table.
-            Default = None
 
         Returns
         -------
@@ -342,7 +343,6 @@ class ImageTable(CASTable):
         blocksize = image_blocksize(width, height)
 
         column_names = ['_filename_{}'.format(i) for i in range(self.patch_level + 1)]
-        column_names = column_names + (columns or [])
 
         if inplace:
             self._retrieve('image.processimages',
@@ -360,7 +360,7 @@ class ImageTable(CASTable):
             out.crop(x=x, y=y, width=width, height=height)
             return out
 
-    def resize(self, width=None, height=None, inplace=True, columns=None):
+    def resize(self, width=None, height=None, inplace=True):
         '''
         Resize the images in the ImageTable
 
@@ -374,9 +374,6 @@ class ImageTable(CASTable):
         inplace : bool, optional
             Specifies whether to update the original table, or to create
             a new one.
-        columns : list of str, optional
-            Specifies the extra columns in the image table.
-            Default = None
 
         Returns
         -------
@@ -394,7 +391,6 @@ class ImageTable(CASTable):
             height = width
         blocksize = image_blocksize(width, height)
         column_names = ['_filename_{}'.format(i) for i in range(self.patch_level + 1)]
-        column_names = column_names + (columns or [])
 
         if inplace:
             self._retrieve('image.processimages',

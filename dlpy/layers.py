@@ -21,10 +21,11 @@
 import pandas as pd
 import six
 from dlpy.utils import multiply_elements, DLPyError, camelcase_to_underscore, underscore_to_camelcase
-from dlpy.utils import DLPyError, _pair, _triple, parameter_2d
+from dlpy.utils import DLPyError, _ntuple, _pair, _triple, parameter_2d
 from . import __dev__
 import warnings
 import collections
+from copy import deepcopy
 
 PALETTES = dict(
     original={
@@ -106,11 +107,15 @@ class Tensor(object):
     def __init__(self, op, value=None):
         self._op = op  # the layer that produces the tensor.
         self._value = value
+        self._shape = None
 
     @property
     def shape(self):
-        # TODO: check shape
-        raise NotImplementedError
+        return self._shape
+
+    @shape.setter
+    def shape(self, value):
+        self._shape = value
 
 
 class Node(object):
@@ -160,6 +165,7 @@ class Layer(object):
     can_be_last_layer = False
     number_of_instances = 0
     layer_id = None
+    shared_weights = None
 
     def __init__(self, name=None, config=None, src_layers=None):
         self.name = name
@@ -184,11 +190,21 @@ class Layer(object):
     def __call__(self, inputs):
         layer_type = self.__class__.__name__
         if isinstance(inputs, list):
-            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale',
+            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale', 'CLoss',
                                                       'Dense', 'Model', 'OutputLayer', 'ROIPooling', 'FastRCNN']:
                 raise DLPyError('The input of {} should have only one layer.'.format(layer_type))
         else:
             inputs = [inputs]
+        if layer_type == 'Model':
+            copied_model = deepcopy(self)
+            # update name
+            if copied_model.number_of_instances != 0:
+                for layer in copied_model.layers:
+                    layer.name = layer.name + '_' + '{}'.format(copied_model.number_of_instances)
+            # share weights
+            # for layer in copied_model.layers:
+            #     layer.from_sub_network = self
+            self = copied_model
         self._assert_inputs(inputs)
         input_layers = []
         for input_ in inputs:
@@ -211,6 +227,7 @@ class Layer(object):
 
         # Model can output multiple tensors
         if layer_type == 'Model':
+            # hook input tensor layers with the layers connected to the input layer of the model
             for i, input_layer in enumerate(self.input_layers):
                 for layer in self.layers:
                     if layer.type == 'input':continue
@@ -219,9 +236,12 @@ class Layer(object):
 
             self._inbound_nodes = [Node(src_layer, self) for src_layer in self.src_layers]
             self.tensor = [Tensor(output_layer) for output_layer in self.output_layers]
+            for tensor, output_layer in zip(self.tensor, self.output_layers):
+                tensor.shape = output_layer
         else:
             self._inbound_nodes = Node(self.src_layers, self)
             self.tensor = Tensor(self)  # return Tensor object
+            self.tensor.shape = self.output_size
         return self.tensor
 
     def __lt__(self, other):
@@ -287,10 +307,12 @@ class Layer(object):
         if self.type == 'input':
             return dict(name=self.name, layer=new_params)
         elif self.type == 'transconvo':
-            if 'outputsize' in new_params:
-                del new_params['outputsize']
-        return dict(name = self.name, layer = new_params,
-                    srclayers = [item.name for item in self.src_layers])
+            new_params.pop('outputsize', None)
+        if self.shared_weights is None:
+            return dict(name = self.name, layer = new_params, srclayers = [item.name for item in self.src_layers])
+        else:
+            return dict(name = self.name, layer = new_params, sharedweights = self.shared_weights,
+                        srclayers = [item.name for item in self.src_layers])
 
     @property
     def summary(self):
@@ -300,8 +322,13 @@ class Layer(object):
         else:
             kernel_size_ = self.kernel_size
 
+        if hasattr(self, 'stride'):
+            stride = self.stride
+        else:
+            stride = self.config.get('stride', '')
+
         return pd.DataFrame([[self.layer_id, self.name, self.type, kernel_size_,
-                              self.config.get('stride', ''), self.activation,
+                              stride, self.activation,
                               self.output_size, (self.num_weights, self.num_bias)]],
                             columns=['Layer Id', 'Layer', 'Type', 'Kernel Size', 'Stride',
                                      'Activation', 'Output Size', 'Number of Parameters'])
@@ -325,11 +352,11 @@ class Layer(object):
                 raise ValueError('Layer {} is called with an input that isn\'t a tensor object'.format(self.name))
 
 
-def Input(n_channels=None, width=None, height=None, name=None, nominals=None, std=None, scale=None,
-          offsets=None, dropout=None, random_flip=None, random_crop=None, random_mutation=None):
+def Input(n_channels=None, height=None, width=None, name=None, nominals=None, std=None, scale=None,
+          offsets=None, dropout=None, random_flip=None, random_crop=None, random_mutation=None, norm_stds=None):
     # used to instantiate a tensor
-    input_layer = InputLayer(n_channels, width, height, name, nominals, std, scale, offsets,
-                             dropout, random_flip, random_crop, random_mutation)
+    input_layer = InputLayer(n_channels, height, width, name, nominals, std, scale, offsets,
+                             dropout, random_flip, random_crop, random_mutation, norm_stds)
     return input_layer.input_tenor
 
 
@@ -386,8 +413,9 @@ class InputLayer(Layer):
     can_be_last_layer = False
     number_of_instances = 0
 
-    def __init__(self, n_channels=None, width=None, height=None, name=None, nominals=None, std=None, scale=None,
-                 offsets=None, dropout=None, random_flip=None, random_crop=None, random_mutation=None, **kwargs):
+    def __init__(self, n_channels=None, height=None, width=None, name=None, nominals=None, std=None, scale=None,
+                 offsets=None, dropout=None, random_flip=None, random_crop=None, random_mutation=None,
+                 norm_stds=None, **kwargs):
 
         if not __dev__ and len(kwargs) > 0:
             raise DLPyError('**kwargs can be used only in development mode.')
@@ -406,7 +434,7 @@ class InputLayer(Layer):
         number_of_instances = 0
         Layer.__init__(self, name, parameters)
         if n_channels is not None and (width or height is not None):
-            self._output_size = (int(self.config['width']), int(self.config['height']), int(self.config['n_channels']))
+            self._output_size = (int(self.config['height']), int(self.config['width']), int(self.config['n_channels']))
         else:
             self._output_size = 0
 
@@ -435,9 +463,95 @@ class InputLayer(Layer):
         return 0
 
 
-class Conv2d(Layer):
+class _Conv(Layer):
     '''
-    Convolution layer
+    Abstract Convolution layer
+
+    Parameters
+    ----------
+
+    n_filters : int
+        Specifies the number of filters for the layer.
+    width : int
+        Specifies the width of the kernel.
+    height : int
+        Specifies the height of the kernel.
+    stride : int, optional
+        Specifies the step size for the moving window of the kernel over the input data.
+    name : string, optional
+        Specifies the name of the convolution layer.
+    stride_horizontal : int, optional
+        Specifies the horizontal stride.
+    stride_vertical : int, optional
+        Specifies the vertical stride.
+    padding : int, optional
+        Specifies the padding size, assuming equal padding vertically and horizontally.
+    padding_width : int, optional
+        Specifies the length of the horizontal padding.
+    padding_height : int, optional
+        Specifies the length of the vertical padding.
+    act : string, optional
+        Specifies the activation function.
+        Valid Values: AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP
+        Default: AUTO
+    fcmp_act : string, optional
+        Specifies the FCMP activation function for the layer.
+    init : string, optional
+        Specifies the initialization scheme for the layer.
+        Valid Values: XAVIER, UNIFORM, NORMAL, CAUCHY, XAVIER1, XAVIER2, MSRA, MSRA1, MSRA2
+        Default: XAVIER
+    std : float, optional
+        Specifies the standard deviation value when the ``init`` parameter is set to NORMAL.
+    mean : float, optional
+        Specifies the mean value when the ``init`` parameter is set to NORMAL.
+    truncation_factor : float, optional
+        Specifies the truncation threshold (truncationFactor x std), when the ``init`` parameter is set to NORMAL
+    init_bias : float, optional
+        Specifies the initial bias for the layer.
+    dropout : float, optional
+        Specifies the dropout rate.
+        Default: 0
+    include_bias : bool, optional
+        Includes bias neurons (default).
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`_Conv`
+
+    '''
+
+    def __init__(self, n_filters, width=None, height=None, stride=1, name=None, stride_horizontal=None,
+                 stride_vertical=None, padding=None, padding_width=None, padding_height=None, act='relu',
+                 fcmp_act=None, init=None, std=None, mean=None, truncation_factor=None, init_bias=None,
+                 dropout=None, include_bias=True, src_layers=None, **kwargs):
+
+        if not __dev__ and len(kwargs) > 0:
+            raise DLPyError('**kwargs can be used only in development mode.')
+
+        parameters = locals()
+        if width is None and height is None:
+            parameters['width'] = 3
+            parameters['height'] = 3
+        elif width is None:
+            parameters['width'] = height
+        elif height is None:
+            parameters['height'] = width
+        parameters = _unpack_config(parameters)
+        # _clean_parameters(parameters)
+
+        Layer.__init__(self, name, parameters, src_layers)
+        self._output_size = None
+        self._num_weights = None
+        self.color_code = get_color(self.type)
+        self.padding = parameter_2d(padding, padding_height, padding_width, (None, None))
+        self.stride = parameter_2d(stride, stride_vertical, stride_horizontal, (1, 1))
+
+
+class Conv2d(_Conv):
+    '''
+    Convolution layer in 2D
 
     Parameters
     ----------
@@ -493,62 +607,295 @@ class Conv2d(Layer):
     :class:`Conv2d`
 
     '''
-
     type = 'convo'
     type_label = 'Convo.'
     type_desc = 'Convolution layer'
     can_be_last_layer = False
     number_of_instances = 0
 
-    def __init__(self, n_filters, width=None, height=None, stride=1, name=None, stride_horizontal=None,
-                 stride_vertical=None, padding=None, padding_width=None, padding_height=None, act='relu',
-                 fcmp_act=None, init=None, std=None, mean=None, truncation_factor=None, init_bias=None,
-                 dropout=None, include_bias=True, src_layers=None, **kwargs):
-
-        if not __dev__ and len(kwargs) > 0:
-            raise DLPyError('**kwargs can be used only in development mode.')
-
-        parameters = locals()
-        if width is None and height is None:
-            parameters['width'] = 3
-            parameters['height'] = 3
-        elif width is None:
-            parameters['width'] = height
-        elif height is None:
-            parameters['height'] = width
-        parameters = _unpack_config(parameters)
-        # _clean_parameters(parameters)
-
-        Layer.__init__(self, name, parameters, src_layers)
-        self._output_size = None
-        self._num_weights = None
-        self.color_code = get_color(self.type)
+    def __init__(self, n_filters, width = None, height = None, stride = 1, name = None, stride_horizontal = None,
+                 stride_vertical = None, padding = None, padding_width = None, padding_height = None, act = 'relu',
+                 fcmp_act = None, init = None, std = None, mean = None, truncation_factor = None, init_bias = None,
+                 dropout = None, include_bias = True, src_layers = None, **kwargs):
+        super(Conv2d, self).__init__(n_filters=n_filters, width=width, height=height, stride=stride, name=name,
+                                     stride_horizontal=stride_horizontal, stride_vertical=stride_vertical,
+                                     padding=padding, padding_width=padding_width, padding_height=padding_height,
+                                     act=act, fcmp_act=fcmp_act, init=init, std=std, mean=mean,
+                                     truncation_factor=truncation_factor, init_bias=init_bias, dropout=dropout,
+                                     include_bias=include_bias, src_layers=src_layers, **kwargs)
 
     @property
     def output_size(self):
         if self._output_size is None:
             # calculate output according to specified padding
-            if self.config['padding'] is not None:
-                out_w = (self.src_layers[0].output_size[0] - 
-                         self.config['width'] + 2*self.config['padding']) // self.config['stride'] + 1
-                out_h = (self.src_layers[0].output_size[1] - 
-                         self.config['height'] + 2*self.config['padding']) // self.config['stride'] + 1
+            if self.padding != (None, None):
+                out_h = ((self.src_layers[0].output_size[0]-self.config['height'] + 2*self.padding[0])//self.stride[0])+1
+                out_w = ((self.src_layers[0].output_size[1]-self.config['width'] + 2*self.padding[1])//self.stride[1])+1
             else:
                 import math
                 # same padding
-                out_w = math.ceil(self.src_layers[0].output_size[0] / self.config['stride'])
-                out_h = math.ceil(self.src_layers[0].output_size[1] / self.config['stride'])
+                out_h = math.ceil(self.src_layers[0].output_size[0]/self.stride[0])
+                out_w = math.ceil(self.src_layers[0].output_size[1]/self.stride[1])
 
-                # if either padding_height or padding_width are specified
-                if self.config['padding_width'] is not None:
-                    out_w = (self.src_layers[0].output_size[0] - 
-                             self.config['width'] + 
-                             2*self.config['padding_width']) // self.config['stride'] + 1
-                if self.config['padding_height'] is not None:
-                    out_h = (self.src_layers[0].output_size[1] - 
-                             self.config['height'] + 
-                             2*self.config['padding_height']) // self.config['stride'] + 1
-            self._output_size = (int(out_w), int(out_h), int(self.config['n_filters']))
+            self._output_size = (int(out_h), int(out_w), int(self.config['n_filters']))
+        return self._output_size
+
+    @property
+    def num_weights(self):
+        if self._num_weights is None:
+            self._num_weights = int(self.config['height'] * self.config['width'] *
+                                    self.config['n_filters'] * self.src_layers[0].output_size[2])
+        return self._num_weights
+
+    @property
+    def kernel_size(self):
+        return (int(self.config['height']), int(self.config['width']))
+
+    @property
+    def num_bias(self):
+        if 'include_bias' in self.config:
+            if not self.config['include_bias']:
+                return 0
+            else:
+                return int(self.config['n_filters'])
+        return int(self.config['n_filters'])
+
+
+class GroupConv2d(Conv2d):
+    '''
+    Group Convolution layer in 2D
+
+    Parameters
+    ----------
+
+    n_filters : int
+        Specifies the number of filters for the layer.
+    n_groups : int
+        Specifies the number of groups for the layer.
+    width : int
+        Specifies the width of the kernel.
+    height : int
+        Specifies the height of the kernel.
+    stride : int, optional
+        Specifies the step size for the moving window of the kernel over the input data.
+    name : string, optional
+        Specifies the name of the convolution layer.
+    stride_horizontal : int, optional
+        Specifies the horizontal stride.
+    stride_vertical : int, optional
+        Specifies the vertical stride.
+    padding : int, optional
+        Specifies the padding size, assuming equal padding vertically and horizontally.
+    padding_width : int, optional
+        Specifies the length of the horizontal padding.
+    padding_height : int, optional
+        Specifies the length of the vertical padding.
+    act : string, optional
+        Specifies the activation function.
+        Valid Values: AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP
+        Default: AUTO
+    fcmp_act : string, optional
+        Specifies the FCMP activation function for the layer.
+    init : string, optional
+        Specifies the initialization scheme for the layer.
+        Valid Values: XAVIER, UNIFORM, NORMAL, CAUCHY, XAVIER1, XAVIER2, MSRA, MSRA1, MSRA2
+        Default: XAVIER
+    std : float, optional
+        Specifies the standard deviation value when the ``init`` parameter is set to NORMAL.
+    mean : float, optional
+        Specifies the mean value when the ``init`` parameter is set to NORMAL.
+    truncation_factor : float, optional
+        Specifies the truncation threshold (truncationFactor x std), when the ``init`` parameter is set to NORMAL
+    init_bias : float, optional
+        Specifies the initial bias for the layer.
+    dropout : float, optional
+        Specifies the dropout rate.
+        Default: 0
+    include_bias : bool, optional
+        Includes bias neurons (default).
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`GroupConv2d`
+
+    '''
+    type = 'groupconvo'
+    type_label = 'GroupConvo.'
+    type_desc = 'Group convolution layer'
+    can_be_last_layer = False
+    number_of_instances = 0
+
+    def __init__(self, n_filters, n_groups = 1, width = None, height = None, stride = 1, name = None,
+                 stride_horizontal = None, stride_vertical = None, padding = None, padding_width = None,
+                 padding_height = None, act = 'relu', fcmp_act = None, init = None, std = None, mean = None,
+                 truncation_factor = None, init_bias = None, dropout = None, include_bias = True,
+                 src_layers = None, **kwargs):
+        super(GroupConv2d, self).__init__(n_filters=n_filters, width=width,
+                                          height=height, stride=stride, name=name, stride_horizontal=stride_horizontal,
+                                          stride_vertical=stride_vertical, padding=padding, padding_width=padding_width,
+                                          padding_height = padding_height, act=act, fcmp_act=fcmp_act, init=init,
+                                          std=std, mean=mean, truncation_factor=truncation_factor, init_bias=init_bias,
+                                          dropout=dropout, include_bias=include_bias, src_layers=src_layers, **kwargs)
+        self.n_groups = n_groups
+        self.config['nGroups'] = n_groups
+
+    @property
+    def output_size(self):
+        if self._output_size is None:
+            # calculate output according to specified padding
+            # calculate output according to specified padding
+            if self.padding != (None, None):
+                out_h = ((self.src_layers[0].output_size[0] - self.config['height'] + 2 * self.padding[0]) //
+                         self.stride[0] + 1)
+                out_w = ((self.src_layers[0].output_size[1] - self.config['width'] + 2 * self.padding[1]) //
+                         self.stride[1] + 1)
+
+            else:
+                import math
+                # same padding
+                out_h = math.ceil(self.src_layers[0].output_size[0] / self.stride[0])
+                out_w = math.ceil(self.src_layers[0].output_size[1] / self.stride[1])
+
+            self._output_size = (int(out_h), int(out_w), int(self.config['n_filters']))
+        return self._output_size
+
+    @property
+    def num_weights(self):
+        if self._num_weights is None:
+            self._num_weights = int(self.config['width'] * self.config['height'] * self.config['n_filters']
+                                    * self.src_layers[0].output_size[2] / self.config['nGroups'])
+        return self._num_weights
+
+    @property
+    def kernel_size(self):
+        return (int(self.config['width']), int(self.config['height']))
+
+    @property
+    def num_bias(self):
+        if 'include_bias' in self.config:
+            if not self.config['include_bias']:
+                return 0
+            else:
+                return int(self.config['n_filters'])
+        return int(self.config['n_filters'])
+
+
+class Conv2DTranspose(Conv2d):
+    """
+    Transpose Convolution layer in 2D
+
+    Parameters
+    ----------
+    n_filters : int
+        Specifies the number of filters for the layer.
+    width : int
+        Specifies the width of the kernel.
+    height : int
+        Specifies the height of the kernel.
+    output_size : tuple
+        Specifies the shape of output. 3D tensor with shape: (n_filters, new_rows, new_cols)
+    stride : int, optional
+        Specifies the step size for the moving window of the kernel over the input data.
+    name : string, optional
+        Specifies the name of the convolution layer.
+    stride_horizontal : int, optional
+        Specifies the horizontal stride.
+    stride_vertical : int, optional
+        Specifies the vertical stride.
+    padding : int, optional
+        Specifies the padding size, assuming equal padding vertically and horizontally.
+    padding_width : int, optional
+        Specifies the length of the horizontal padding.
+    padding_height : int, optional
+        Specifies the length of the vertical padding.
+    act : string, optional
+        Specifies the activation function.
+        Valid Values: AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP
+        Default: AUTO
+    fcmp_act : string, optional
+        Specifies the FCMP activation function for the layer.
+    init : string, optional
+        Specifies the initialization scheme for the layer.
+        Valid Values: XAVIER, UNIFORM, NORMAL, CAUCHY, XAVIER1, XAVIER2, MSRA, MSRA1, MSRA2
+        Default: XAVIER
+    mean : float, optional
+        Specifies the mean value when the ``init`` parameter is set to NORMAL.
+    std : float, optional
+        Specifies the standard deviation value when the ``init`` parameter is set to NORMAL.
+    output_padding : int
+        Specifies the number of pixels to add to the right and bottom sides of the input to adjust the output shape.
+        This parameter is used to resolve ambiguity that might be introduced when stride is larger than 1.
+        If the input shape is 32x32, kernel size is 3x3, and stride is 2 on both sides, and padding is 1 on both sides,
+        then the output shape is 63x63. Setting the output_paddings to 1 on both sides changes
+        the output shape to 64x64.
+    output_padding_height : int
+        Specifies the number of pixels to be added to the bottom side of the input to adjust the output shape.
+        This parameter is used to resolve ambiguity that might be introduced when the stride is larger than 1.
+        If the input shape is 32x32, kernel size is 3x3, stride is 2 on both sides, and padding is 1 on both sides,
+        then the output shape is 63x63. Setting output_paddings to 1 on both sides changes the output shape to 64x64.
+    output_padding_width : int
+        specifies the number of pixels to add to the right side of the input to adjust the output shape.
+        This parameter is used to resolve ambiguity that might be introduced when stride is larger than 1.
+        If the input shape is 32x32, kernel size is 3x3, stride is 2 on both sides, and padding is 1 on both sides,
+        then the output shape is 63x63. Setting the outputPaddings to 1 on both sides changes the output shape to 64x64.
+    truncation_factor : float, optional
+        Specifies the truncation threshold (truncationFactor x std), when the ``init`` parameter is set to NORMAL
+    init_bias : float, optional
+        Specifies the initial bias for the layer.
+    dropout : float, optional
+        Specifies the dropout rate.
+        Default: 0
+    include_bias : bool, optional
+        Includes bias neurons (default).
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+
+    Returns
+    -------
+    :class:`Conv2DTranspose`
+
+    """
+    type = 'transconvo'
+    type_label = 'Transconvo'
+    type_desc = 'Transconvo layer'
+    can_be_last_layer = False
+    number_of_instances = 0
+
+    def __init__(self, n_filters, height=None, width=None, output_size=None, name=None, act='AUTO',
+                 dropout=0, fcmp_act=None, include_bias=True, init='XAVIER', init_bias=0, mean=0, std=1,
+                 output_padding=None, output_padding_height=None, output_padding_width=None,
+                 padding=None, padding_height=None, padding_width=None,
+                 stride=None, stride_horizontal=None, stride_vertical=None, truncation_factor=None,
+                 src_layers=None, **kwargs):
+        if any([output_padding, output_padding_height, output_padding_width]) and output_size is not None:
+            raise DLPyError('you cannot specify values for both output_size '
+                            'and output_padding or output_padding_height or output_padding_width')
+        super(Conv2DTranspose, self).__init__(n_filters = n_filters, width = width,
+                                              height = height, stride = stride, name = name,
+                                              stride_horizontal = stride_horizontal,
+                                              stride_vertical = stride_vertical, padding = padding,
+                                              padding_width = padding_width, padding_height = padding_height,
+                                              act = act, fcmp_act = fcmp_act, init = init, std = std,
+                                              mean = mean, truncation_factor = truncation_factor,
+                                              init_bias = init_bias,
+                                              dropout = dropout, include_bias = include_bias, src_layers = src_layers,
+                                              **kwargs)
+
+        self._output_size = output_size
+        self.padding = parameter_2d(padding, padding_height, padding_width, (0, 0))
+        self.stride = parameter_2d(stride, stride_vertical, stride_horizontal, (1, 1))
+        self.output_padding = parameter_2d(output_padding, output_padding_height, output_padding_width, (0, 0))
+
+    @property
+    def output_size(self):
+        if self._output_size is None:
+            input_size = self.src_layers[0].output_size[:-1]
+            output_height = (input_size[0]-1)*self.stride[0]-2*self.padding[0]+self.config['height']+self.output_padding[0]
+            output_width = (input_size[1]-1)*self.stride[1]-2*self.padding[1]+self.config['width']+self.output_padding[1]
+            self._output_size = (output_height, output_width, int(self.config['n_filters']))
         return self._output_size
 
     @property
@@ -570,6 +917,21 @@ class Conv2d(Layer):
             else:
                 return int(self.config['n_filters'])
         return int(self.config['n_filters'])
+
+    def calculate_output_padding(self):
+        '''calculate output_padding before adding the layer'''
+        if self._output_size is not None:
+            input_size = self.src_layers[0].output_size[:2]
+            stride = self.stride
+            padding = self.padding
+            kernel_size = (self.config['height'], self.config['width'])
+            min_sizes = [(input_size[i] - 1) * stride[i] - 2 * padding[i] + kernel_size[i] for i in range(2)]
+            self.output_padding = tuple([self._output_size[i] - min_sizes[i] for i in range(2)])
+            if len(set(self.output_padding)) == 1:
+                self.config['output_padding'] = self.output_padding[0]
+            else:
+                self.config['output_padding_height'] = self.output_padding[0]
+                self.config['output_padding_width'] = self.output_padding[1]
 
 
 class Pooling(Layer):
@@ -630,13 +992,24 @@ class Pooling(Layer):
         if width is None and height is None:
             parameters['width'] = 2
             parameters['height'] = 2
+        # When width and height is 0, it will do global pooling
+        # elif width == 0 or height == 0:
+        #     raise DLPyError('Neither width nor height can be 0')
         elif width is None:
             parameters['width'] = height
         elif height is None:
             parameters['height'] = width
 
+        # by default stride is same as window size
+        self.stride = parameter_2d(stride, stride_vertical, stride_horizontal,
+                                   (parameters['height'], parameters['width']))
+        # if doing global pooling
+        if parameters['width'] == 0 and parameters['height'] == 0:
+            self.stride = _pair(1)
         if stride is None:
-            parameters['stride'] = parameters['width']
+            parameters['stride_vertical'] = self.stride[0]
+            parameters['stride_horizontal'] = self.stride[1]
+
         parameters = _unpack_config(parameters)
         # _clean_parameters(parameters)
 
@@ -644,37 +1017,64 @@ class Pooling(Layer):
         self._output_size = None
         self.activation = pool.title()
         self.color_code = get_color(self.type)
+        self.padding = parameter_2d(padding, padding_height, padding_width, (None, None))
 
     @property
     def output_size(self):
         if self._output_size is None:
             # calculate output according to specified padding
-            if self.config['padding'] is not None:
-                out_w = (self.src_layers[0].output_size[0] - 
-                         self.config['width'] + 2*self.config['padding']) // self.config['stride'] + 1
-                out_h = (self.src_layers[0].output_size[1] - 
-                         self.config['height'] + 2*self.config['padding']) // self.config['stride'] + 1
+            if self.padding != (None, None):
+                out_h = ((self.src_layers[0].output_size[0]-self.config['height']+2*self.padding[0])//self.stride[0])+1
+                out_w = ((self.src_layers[0].output_size[1]-self.config['width']+2*self.padding[1])//self.stride[1])+1
             else:
                 import math
-                # same padding
-                out_w = math.ceil(self.src_layers[0].output_size[0] / self.config['stride'])
-                out_h = math.ceil(self.src_layers[0].output_size[1] / self.config['stride'])
-
-                # if either padding_height or padding_width are specified
-                if self.config['padding_width'] is not None:
-                    out_w = (self.src_layers[0].output_size[0] - 
-                             self.config['width'] + 
-                             2*self.config['padding_width']) // self.config['stride'] + 1
-                if self.config['padding_height'] is not None:
-                    out_h = (self.src_layers[0].output_size[1] - 
-                             self.config['height'] + 
-                             2*self.config['padding_height']) // self.config['stride'] + 1
-            self._output_size = (int(out_w), int(out_h), int(self.src_layers[0].output_size[2]))
+                out_h = math.ceil(self.src_layers[0].output_size[0]/self.stride[0])
+                out_w = math.ceil(self.src_layers[0].output_size[1]/self.stride[1])
+            self._output_size = (int(out_h), int(out_w), int(self.src_layers[0].output_size[2]))
         return self._output_size
 
     @property
     def kernel_size(self):
-        return (int(self.config['width']), int(self.config['height']))
+        return (int(self.config['height']), int(self.config['width']))
+
+    @property
+    def num_weights(self):
+        return 0
+
+    @property
+    def num_bias(self):
+        return 0
+
+
+class GlobalAveragePooling2D(Pooling):
+    '''
+    Global Average Pooling layer in 2D
+
+    Parameters
+    ----------
+    name : string, optional
+        Specifies the name of the layer.
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`GlobalAveragePooling2D`
+
+    '''
+    def __init__(self, name = None, src_layers = None, **kwargs):
+        super(GlobalAveragePooling2D, self).__init__(width=0, height=0, stride=1, name=name,
+                                                     pool='mean', src_layers=src_layers, **kwargs)
+
+    @property
+    def output_size(self):
+        if self._output_size is None:
+            self._output_size = (1, 1, int(self.src_layers[0].output_size[2]))
+        return self._output_size
+
+    @property
+    def kernel_size(self):
+        return (int(self.src_layers[0].output_size[0]), int(self.src_layers[0].output_size[1]))
 
     @property
     def num_weights(self):
@@ -946,6 +1346,7 @@ class BN(Layer):
 class Res(Layer):
     '''
     Residual layer
+    Element-wise addition
 
     Parameters
     ----------
@@ -998,17 +1399,20 @@ class Res(Layer):
     @property
     def output_size(self):
         if self._output_size is None:
-            if self.src_layers is None:
-                self._output_size = (0, 0, 0)
-            self._output_size = (int(min([item.output_size[0] for item in self.src_layers])),
-                                 int(min([item.output_size[1] for item in self.src_layers])),
-                                 int(max([item.output_size[2] for item in self.src_layers])))
+            # get dimension of source layers; source layer can be one dimension or multi-dimension
+            n_dims = [len(i.output_size) if isinstance(i.output_size, tuple) else 1 for i in self.src_layers]
+            # number of dimension should be consistent.
+            if len(set(n_dims)) != 1:
+                raise DLPyError('The dimension of source layers\' outputs are inconsistent.')
+            # output size is same as first source layer's
+            self._output_size = self.src_layers[0].output_size
         return self._output_size
 
 
 class Concat(Layer):
     '''
     Concat layer
+    Concatenate source layers' outputs along the last dimension
 
     Parameters
     ----------
@@ -1060,12 +1464,27 @@ class Concat(Layer):
 
     @property
     def output_size(self):
+        # calculate output size: Concatenate source layers' outputs along the last dimension
         if self._output_size is None:
-            if self.src_layers is None:
-                self._output_size = (0, 0, 0)
-            self._output_size = (int(self.src_layers[0].output_size[0]),
-                                 int(self.src_layers[0].output_size[1]),
-                                 int(sum([item.output_size[2] for item in self.src_layers])))
+            self._output_size = []
+            # get the dimension of input layers
+            n_dims = [len(i.output_size) if isinstance(i.output_size, tuple) else 1 for i in self.src_layers]
+            # source layers' dimension should be consistent
+            if len(set(n_dims)) != 1:
+                raise DLPyError('The dimension of source layers\' outputs are inconsistent.')
+            n_dim = len(self.src_layers[0].output_size)
+            # last dimension should be sum of each layer's last dimension.
+            for i in reversed(range(n_dim)):
+                if i == n_dim-1:
+                    self._output_size.append(int(sum([item.output_size[i] for item in self.src_layers])))
+                else:
+                    self._output_size.append(int(self.src_layers[0].output_size[i]))
+            # reorder
+            self._output_size = self._output_size[::-1]
+            if len(self._output_size) == 1:
+                self._output_size = self._output_size[0]
+            else:
+                self._output_size = tuple(self._output_size)
         return self._output_size
 
 
@@ -1515,6 +1934,7 @@ class Scale(Layer):
     @property
     def output_size(self):
         if self._output_size is None:
+            # TODO: check input dimension, src_layer order.
             self._output_size = (int(max(self.src_layers[0].output_size[0], self.src_layers[0].output_size[0])),
                                  int(max(self.src_layers[0].output_size[1], self.src_layers[0].output_size[1])),
                                  int(max(self.src_layers[0].output_size[2], self.src_layers[0].output_size[2])))
@@ -1587,119 +2007,8 @@ class Reshape(Layer):
     @property
     def output_size(self):
         if self._output_size is None:
-            self._output_size = (self.config['width'], self.config['height'], self.config['depth'])
+            self._output_size = (self.config['height'], self.config['width'], self.config['depth'])
         return self._output_size
-
-    @property
-    def num_bias(self):
-        return 0
-
-
-class Conv2DTranspose(Layer):
-    """
-    TODO:
-    Transconvo layer
-
-    Parameters
-    ----------
-    name : string, optional
-        Specifies the name of the layer.
-    act : string, optional
-        | Specifies the activation function.
-        | possible values: [ AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP ]
-        | default: AUTO
-    fcmp_act : string, optional
-        Specifies the FCMP activation function for the layer.
-    height : int, required
-        Specifies the height of the input data. By default the height is determined automatically
-        when the model training begins.
-    width : int, required
-        Specifies the width of the input data. By default the width is determined automatically
-        when the model training begins.
-    depth : int, required
-        Specifies the depth of the feature maps.
-    src_layers : iterable Layer, optional
-        Specifies the layers directed to this layer.
-
-    Returns
-    -------
-    :class:`Reshape`
-    """
-
-    type = 'transconvo'
-    type_label = 'Transconvo'
-    type_desc = 'Transconvo layer'
-    can_be_last_layer = False
-    number_of_instances = 0
-
-    def __init__(self, n_filters, height=None, width=None, name=None, act='AUTO', dropout=0, fcmp_act=None,
-                 include_bias=True, init='XAVIER', init_bias=0, mean=0, std=1,
-                 output_padding=None, output_padding_height=None, output_padding_width=None,
-                 padding=None, padding_height=None, padding_width=None,
-                 stride=None, stride_horizontal=None, stride_vertical=None, truncation_factor=None,
-                 src_layers=None, output_size=None, **kwargs):
-        if any([output_padding, output_padding_height, output_padding_width]) and output_size is not None:
-            raise DLPyError('you cannot specify values for both output_size '
-                            'and output_padding or output_padding_height or output_padding_width')
-        parameters = locals()
-        parameters = _unpack_config(parameters)
-        if width is None and height is None:
-            width = 3
-            height = 3
-            parameters['width'] = 3
-            parameters['height'] = 3
-        elif width is None:
-            width = height
-            parameters['width'] = height
-        elif height is None:
-            height = width
-            parameters['height'] = width
-        else:
-            if height != width:
-                DLPyError("DLPy doesn't support non-square feature map and non-square kernel size. Please use action")
-        # _clean_parameters(parameters)
-        Layer.__init__(self, name, parameters, src_layers)
-        self._output_size = output_size
-        self.padding = parameter_2d(padding, padding_height, padding_width, (0, 0))
-        self.stride = parameter_2d(stride, stride_vertical, stride_horizontal, (1, 1))
-        self.output_padding = parameter_2d(output_padding, output_padding_height, output_padding_width, (0, 0))
-        self._num_weights = None
-        self.color_code = get_color(self.type)
-
-    @property
-    def kernel_size(self):
-        return (int(self.config['height']), int(self.config['width']))
-
-    @property
-    def num_weights(self):
-        if self._num_weights is None:
-            self._num_weights = int(self.config['width'] * self.config['height'] *
-                                    self.config['n_filters'] * self.src_layers[0].output_size[2])
-        return self._num_weights
-
-    @property
-    def output_size(self):
-        #if self._output_size is None:
-        input_size = self.src_layers[0].output_size[:-1]
-        output_height = (input_size[0]-1)*self.stride[0]-2*self.padding[0]+self.config['height']+self.output_padding[0]
-        output_width = (input_size[1]-1)*self.stride[1]-2*self.padding[1]+self.config['width']+self.output_padding[1]
-        self._output_size = (output_height, output_width, int(self.config['n_filters']))
-        return self._output_size
-
-    def calculate_output_padding(self):
-        '''calculate output_padding before adding the layer'''
-        if self._output_size is not None:
-            input_size = self.src_layers[0].output_size[:2]
-            stride = self.stride
-            padding = self.padding
-            kernel_size = (self.config['height'], self.config['width'])
-            min_sizes = [(input_size[i]-1)*stride[i]-2*padding[i]+kernel_size[i] for i in range(2)]
-            self.output_padding = tuple([self._output_size[i]-min_sizes[i] for i in range(2)])
-            if len(set(self.output_padding)) == 1:
-                self.config['output_padding'] = self.output_padding[0]
-            else:
-                self.config['output_padding_height'] = self.output_padding[0]
-                self.config['output_padding_width'] = self.output_padding[1]
 
     @property
     def num_bias(self):
@@ -1708,16 +2017,16 @@ class Conv2DTranspose(Layer):
 
 class Segmentation(Layer):
     """
-    Reshape layer
+    Segmentation layer
 
     Parameters
     ----------
     name : string, optional
         Specifies the name of the layer.
     act : string, optional
-        | Specifies the activation function.
-        | possible values: [ AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP ]
-        | default: AUTO
+        Specifies the activation function.
+        possible values: [ AUTO, IDENTITY, LOGISTIC, SIGMOID, TANH, RECTIFIER, RELU, SOFPLUS, ELU, LEAKY, FCMP ]
+        default: AUTO
     fcmp_act : string, optional
         Specifies the FCMP activation function for the layer.
     src_layers : iterable Layer, optional
@@ -1730,12 +2039,14 @@ class Segmentation(Layer):
         when the model training begins.
     depth : int, required
         Specifies the depth of the feature maps.
+    target_scale : double
+        Specifies the factor used to scale target values for a segmentation layer.
     src_layers : iterable Layer, optional
         Specifies the layers directed to this layer.
 
     Returns
     -------
-    :class:`Reshape`
+    :class:`Segmentation`
     """
 
     type = 'segmentation'
@@ -1744,7 +2055,7 @@ class Segmentation(Layer):
     can_be_last_layer = True
     number_of_instances = 0
 
-    def __init__(self, name=None, act=None, error=None, src_layers=None, **kwargs):
+    def __init__(self, name=None, act=None, error=None, target_scale=1.0, src_layers=None, **kwargs):
         parameters = locals()
         parameters = _unpack_config(parameters)
         # _clean_parameters(parameters)
@@ -1773,41 +2084,6 @@ class Segmentation(Layer):
         return 0
 
 
-class FCMP(Layer):
-    type = 'FCMP'
-    type_label = 'FCMP'
-    type_desc = 'FCMP layer'
-    number_of_instances = 0
-
-    def __init__(self, name = None, backward_func = None, forward_func = None, height = None, width = None,
-                 depth = None, n_weights = None, src_layers = None, can_be_last_layer = False, **kwargs):
-        parameters = locals()
-        self.can_be_last_layer = can_be_last_layer
-        del parameters['can_be_last_layer']
-        parameters = _unpack_config(parameters)
-        # _clean_parameters(parameters)
-        Layer.__init__(self, name, parameters, src_layers)
-        self._output_size = (width, height, depth)
-        self._num_weights = n_weights
-        self.color_code = get_color(self.type)
-
-    @property
-    def kernel_size(self):
-        return None
-
-    @property
-    def num_weights(self):
-        return self._num_weights
-
-    @property
-    def output_size(self):
-        return self._output_size
-
-    @property
-    def num_bias(self):
-        return 0
-
-
 class ChannelShuffle(Layer):
     '''
     Channel Shuffle layer
@@ -1826,12 +2102,12 @@ class ChannelShuffle(Layer):
 
     Returns
     -------
-    :class:`BN`
+    :class:`ChannelShuffle`
 
     '''
     type = 'channelshuffle'
     type_label = 'ChannelShuffle'
-    type_desc = 'Channel Shuffle layer'
+    type_desc = 'Channel shuffle layer'
     can_be_last_layer = False
     number_of_instances = 0
 
@@ -1870,7 +2146,7 @@ class ChannelShuffle(Layer):
 
 class RegionProposal(Layer):
     '''
-    RegionProposal layer
+    Region proposal layer
 
     Parameters
     ----------
@@ -1894,7 +2170,7 @@ class RegionProposal(Layer):
         Specifies the coordinates format type in the input label and detection result.
         Valid Values: RECT, COCO, YOLO
         Default: COCO
-    do_rpn_only : Boolean, optional
+    do_RPN_only : Boolean, optional
         Specifies that in the model, only Region Proposal task is to be done in the model,
         not including the Fast RCNN task
         Default: FALSE
@@ -1922,12 +2198,12 @@ class RegionProposal(Layer):
     '''
     type = 'regionproposal'
     type_label = 'RegionProposal'
-    type_desc = 'Region Proposal layer'
+    type_desc = 'Region proposal layer'
     can_be_last_layer = True
     number_of_instances = 0
 
     def __init__(self, anchor_ratio, anchor_scale, name=None, act='AUTO', anchor_num_to_sample=256, base_anchor_size=16,
-                 coord_type='COCO', do_rpn_only=False, max_label_per_image=200, proposed_roi_num_score=300,
+                 coord_type='COCO', do_RPN_only=False, max_label_per_image=200, proposed_roi_num_score=300,
                  proposed_roi_num_train=2000, roi_train_sample_num=128, src_layers=None, **kwargs):
 
         if not __dev__ and len(kwargs) > 0:
@@ -1992,7 +2268,7 @@ class ROIPooling(Layer):
     '''
     type = 'roipooling'
     type_label = 'ROIPooling'
-    type_desc = 'ROI Pooling layer'
+    type_desc = 'Region pooling layer'
     can_be_last_layer = False
     number_of_instances = 0
 
@@ -2021,7 +2297,7 @@ class ROIPooling(Layer):
     def output_size(self):
         if self._output_size is None:
             self._output_size = (self.config['output_width'], self.config['output_height'],
-                                 self.src_layers[0].output_size[2])
+                                 self.src_layers[0].output_size[1])
         return self._output_size
 
     @property
@@ -2094,7 +2370,67 @@ class FastRCNN(Layer):
     @property
     def output_size(self):
         if self._output_size is None:
-            self._output_size = self._output_size = self.src_layers[0].output_size
+            self._output_size = self.src_layers[0].output_size
+        return self._output_size
+
+    @property
+    def num_bias(self):
+        return 0
+
+
+class EmbeddingLoss(Layer):
+    '''
+    EmbeddingLoss layer
+
+    Parameters
+    ----------
+    name : string, optional
+        Specifies the name of the layer.
+    distance : string, optional
+        Specifies the distance measure for the embedding loss layer.
+        Valid Values: AUTO, COS, L1, L2
+        Default: L2
+    margin : double, optional
+        Specifies the margin value that defines a radius for dissimilar pair contributions.
+        Default: 2
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`EmbeddingLoss`
+
+    '''
+    type = 'closs'
+    type_label = 'Closs'
+    type_desc = 'Closs layer'
+    can_be_last_layer = True
+    number_of_instances = 0
+
+    def __init__(self, name=None, distance="L2", margin=2, src_layers=None, **kwargs):
+
+        if not __dev__ and len(kwargs) > 0:
+            raise DLPyError('**kwargs can be used only in development mode.')
+
+        parameters = locals()
+        parameters = _unpack_config(parameters)
+        # _clean_parameters(parameters)
+        Layer.__init__(self, name, parameters, src_layers)
+        self._output_size = None
+        self.color_code = get_color(self.type)
+
+    @property
+    def kernel_size(self):
+        return None
+
+    @property
+    def num_weights(self):
+        return 0
+
+    @property
+    def output_size(self):
+        if self._output_size is None:
+            self._output_size = self.src_layers[0].output_size
         return self._output_size
 
     @property
@@ -2119,10 +2455,7 @@ def _unpack_config(config):
     for key, value in six.iteritems(kwargs):
         new_kwargs[camelcase_to_underscore(key)] = value
     del config['self'], config['name'], config['kwargs']
-    try:
-        del config['src_layers']
-    except:
-        pass
+    config.pop('src_layers', None)
     out = {}
     conflict_arg = [i for i in config if i in new_kwargs.keys()]
     for arg in conflict_arg:
@@ -2135,5 +2468,10 @@ def _unpack_config(config):
     return out
 
 
-# Aliases
+# Aliases: map to Keras layer name
 Transconvo = Conv2DTranspose
+Add = Res
+BatchNormalization = BN
+Concatenate = Concat
+Conv2D = Conv2d
+CLoss = EmbeddingLoss
