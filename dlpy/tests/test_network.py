@@ -134,6 +134,9 @@ class TestNetwork(tm.TestCase):
         model1.compile()
         model1.print_summary()
         self.assertTrue(model1.count_params() == 12682)
+        model1 = Model(conn = self.s, inputs = [input2], outputs = [output1, output2])
+        model1.compile()
+        model1.print_summary()
 
     def test_unet(self):
         inputs = Input(3, 512, 512, scale = 1.0 / 255)
@@ -576,7 +579,7 @@ class TestNetwork(tm.TestCase):
         from dlpy.applications import ResNet18_Caffe
         model_resnet18 = ResNet18_Caffe(self.s, n_classes = 6, random_crop = 'none', width = 400, height = 400)
         backbone = model_resnet18.to_functional_model(model_resnet18.layers[-2])
-        inp = Input(**backbone.layers[0].config)
+        inp = Input(**backbone.layers[0].config, name='xxxx')
         res8 = backbone(inp)
         n_classes = 1
         OrigAnchorNum = 9
