@@ -125,8 +125,10 @@ class Network(Layer):
             if start in self.layers:
                 return
             # if the node is an input layer, add it and return
-            if start.type == 'input' and start.type != 'model':
+            if start in self.input_layers and start.type != 'model':
                 self.layers.append(start)
+                return
+            if start.type == 'input':
                 return
             for src_layer in start.src_layers:
                 build_map(src_layer)
