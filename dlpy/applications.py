@@ -4621,7 +4621,7 @@ def Faster_RCNN(conn, n_channels=3, width=1000, height=496, scale=1,
     conv5_3 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv5_3')(conv5_2)
 
     rpn_conv = Conv2d(width = 3, n_filters = 512, name = 'rpn_conv_3x3')(conv5_3)
-    rpn_score = Conv2d(act = 'identity', width = 1, n_filters = ((n_classes + 1 + 4) * num_anchors),
+    rpn_score = Conv2d(act = 'identity', width = 1, n_filters = ((1 + 1 + 4) * num_anchors),
                        name = 'rpn_score')(rpn_conv)
 
     rp1 = RegionProposal(max_label_per_image = max_label_per_image, base_anchor_size = base_anchor_size,
