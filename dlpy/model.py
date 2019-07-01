@@ -310,8 +310,8 @@ class Model(Network):
                 raise DLPyError('either dataspecs or inputs need to be non-None')
 
         if optimizer is None:
-            optimizer = Optimizer(algorithm=VanillaSolver(FixedLR(learning_rate=lr)),  mini_batch_size=mini_batch_size,
-                                  max_epochs=max_epochs, log_level=log_level)
+            optimizer = Optimizer(algorithm=VanillaSolver(lr_scheduler=FixedLR(learning_rate=lr)),
+                                  mini_batch_size=mini_batch_size, max_epochs=max_epochs, log_level=log_level)
         else:
             if not isinstance(optimizer, Optimizer):
                 raise DLPyError('optimizer should be an Optimizer object')
@@ -2092,17 +2092,6 @@ class _Solver(DLPyDict):
 
     Parameters
     ----------
-    lr_scheduler : LRScheduler, optional
-        Specifies learning rate policy
-        DLPy provides you with some predefined learning rate policies.
-        1. FixedLR
-        2. StepLR
-        3. MultiStepLR
-        4. PolynomialLR
-        5. ReduceLROnPlateau
-        6. CyclicLR
-        Besides, you can also customize your own learning rate policy.
-        You can find more examples at DLPy example folder.
     use_locking : bool, optional
         When it is false, the gradients are computed asynchronously with
         multiple threads.
@@ -2131,15 +2120,26 @@ class _Solver(DLPyDict):
         thirteenth epochs.
     fcmp_learning_rate : string, optional
         specifies the FCMP learning rate function.
+    lr_scheduler : LRScheduler, optional
+        Specifies learning rate policy
+        DLPy provides you with some predefined learning rate policies.
+        1. FixedLR
+        2. StepLR
+        3. MultiStepLR
+        4. PolynomialLR
+        5. ReduceLROnPlateau
+        6. CyclicLR
+        Besides, you can also customize your own learning rate policy.
+        You can find more examples at DLPy example folder.
 
     Returns
     -------
     :class:`Solver`
 
     '''
-    def __init__(self, lr_scheduler=None, use_locking=True, clip_grad_max=None, clip_grad_min=None,
+    def __init__(self, use_locking=True, clip_grad_max=None, clip_grad_min=None,
                  learning_rate=None, learning_rate_policy=None, gamma=None, step_size=None, power=None,
-                 steps=None, fcmp_learning_rate=None):
+                 steps=None, fcmp_learning_rate=None, lr_scheduler=None):
         args_wrapped_in_lr_scheduler = ['learning_rate', 'learning_rate_policy', 'gamma', 'step_size',
                                         'power', 'steps', 'fcmp_learning_rate']
         DLPyDict.__init__(self, learning_rate=learning_rate, learning_rate_policy=learning_rate_policy,
@@ -2191,17 +2191,6 @@ class VanillaSolver(_Solver):
 
     Parameters
     ----------
-    lr_scheduler : LRScheduler, optional
-        Specifies learning rate policy
-        DLPy provides you with some predefined learning rate policies.
-        1. FixedLR
-        2. StepLR
-        3. MultiStepLR
-        4. PolynomialLR
-        5. ReduceLROnPlateau
-        6. CyclicLR
-        Besides, you can also customize your own learning rate policy.
-        You can find more examples at DLPy example folder.
     use_locking : bool, optional
         When it is false, the gradients are computed asynchronously with
         multiple threads.
@@ -2230,26 +2219,6 @@ class VanillaSolver(_Solver):
         and thirteenth epochs.
     fcmp_learning_rate : string, optional
         specifies the FCMP learning rate function.
-
-    Returns
-    -------
-    :class:`VanillaSolver`
-
-    '''
-    def __init__(self, lr_scheduler=None, use_locking=True, clip_grad_max=None, clip_grad_min=None,
-                 learning_rate=None, learning_rate_policy=None, gamma=None, step_size=None, power=None,
-                 steps=None, fcmp_learning_rate=None):
-        _Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min,
-                         learning_rate, learning_rate_policy, gamma, step_size, power, steps, fcmp_learning_rate)
-        self.set_method('vanilla')
-
-
-class MomentumSolver(_Solver):
-    '''
-    Momentum solver object
-
-    Parameters
-    -----------
     lr_scheduler : LRScheduler, optional
         Specifies learning rate policy
         DLPy provides you with some predefined learning rate policies.
@@ -2261,6 +2230,27 @@ class MomentumSolver(_Solver):
         6. CyclicLR
         Besides, you can also customize your own learning rate policy.
         You can find more examples at DLPy example folder.
+
+    Returns
+    -------
+    :class:`VanillaSolver`
+
+    '''
+    def __init__(self, use_locking=True, clip_grad_max=None, clip_grad_min=None,
+                 learning_rate=None, learning_rate_policy=None, gamma=None, step_size=None, power=None,
+                 steps=None, fcmp_learning_rate=None, lr_scheduler=None):
+        _Solver.__init__(self, use_locking, clip_grad_max, clip_grad_min,learning_rate, learning_rate_policy,
+                         gamma, step_size, power, steps, fcmp_learning_rate, lr_scheduler)
+        self.set_method('vanilla')
+
+
+class MomentumSolver(_Solver):
+    '''
+    Momentum solver object
+
+    Parameters
+    -----------
+
     momentum : double, optional
         Specifies the momentum for stochastic gradient descent.
     learning_rate : double, optional
@@ -2291,27 +2281,6 @@ class MomentumSolver(_Solver):
         ninth, and thirteenth epochs.
     fcmp_learning_rate : string, optional
         specifies the FCMP learning rate function.
-
-    Returns
-    -------
-    :class:`MomentumSolver`
-
-    '''
-    def __init__(self, lr_scheduler=None, use_locking=True, clip_grad_max=None, clip_grad_min=None, momentum=0.9,
-                 learning_rate=None, learning_rate_policy=None, gamma=None, step_size=None, power=None,
-                 steps=None, fcmp_learning_rate=None):
-        _Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min,
-                         learning_rate, learning_rate_policy, gamma, step_size, power, steps, fcmp_learning_rate)
-        self.set_method('momentum')
-        self.add_parameter('momentum', momentum)
-
-
-class AdamSolver(_Solver):
-    '''
-    Adam solver object
-
-    Parameters
-    ----------
     lr_scheduler : LRScheduler, optional
         Specifies learning rate policy
         DLPy provides you with some predefined learning rate policies.
@@ -2323,6 +2292,27 @@ class AdamSolver(_Solver):
         6. CyclicLR
         Besides, you can also customize your own learning rate policy.
         You can find more examples at DLPy example folder.
+
+    Returns
+    -------
+    :class:`MomentumSolver`
+
+    '''
+    def __init__(self, use_locking=True, clip_grad_max=None, clip_grad_min=None, momentum=0.9,
+                 learning_rate=None, learning_rate_policy=None, gamma=None, step_size=None, power=None,
+                 steps=None, fcmp_learning_rate=None, lr_scheduler=None):
+        _Solver.__init__(self, use_locking, clip_grad_max, clip_grad_min, learning_rate, learning_rate_policy,
+                         gamma, step_size, power, steps, fcmp_learning_rate, lr_scheduler)
+        self.set_method('momentum')
+        self.add_parameter('momentum', momentum)
+
+
+class AdamSolver(_Solver):
+    '''
+    Adam solver object
+
+    Parameters
+    ----------
     beta1 : double, optional
         Specifies the exponential decay rate for the first moment in
         the Adam learning algorithm.
@@ -2357,17 +2347,28 @@ class AdamSolver(_Solver):
         and thirteenth epochs.
     fcmp_learning_rate : string, optional
         specifies the FCMP learning rate function.
+    lr_scheduler : LRScheduler, optional
+        Specifies learning rate policy
+        DLPy provides you with some predefined learning rate policies.
+        1. FixedLR
+        2. StepLR
+        3. MultiStepLR
+        4. PolynomialLR
+        5. ReduceLROnPlateau
+        6. CyclicLR
+        Besides, you can also customize your own learning rate policy.
+        You can find more examples at DLPy example folder.
 
     Returns
     -------
     :class:`AdamSolver`
 
     '''
-    def __init__(self, lr_scheduler=None, beta1=0.9, beta2=0.999, use_locking=True, clip_grad_max=None, clip_grad_min=None,
+    def __init__(self, beta1=0.9, beta2=0.999, use_locking=True, clip_grad_max=None, clip_grad_min=None,
                  learning_rate=None, learning_rate_policy=None, gamma=None, step_size=None, power=None,
-                 steps=None, fcmp_learning_rate=None):
-        _Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min,
-                         learning_rate, learning_rate_policy, gamma, step_size, power, steps, fcmp_learning_rate)
+                 steps=None, fcmp_learning_rate=None, lr_scheduler=None):
+        _Solver.__init__(self, use_locking, clip_grad_max, clip_grad_min, learning_rate, learning_rate_policy,
+                         gamma, step_size, power, steps, fcmp_learning_rate, lr_scheduler)
         self.set_method('adam')
         self.add_parameter('beta1', beta1)
         self.add_parameter('beta2', beta2)
@@ -2394,17 +2395,6 @@ class LBFGSolver(_Solver):
         the maxEpochs= option.
     backtrack_ratio : double
         Specifies the backtrack ratio of line search iterations for L-BFGS solver.
-    lr_scheduler : LRScheduler, optional
-        Specifies learning rate policy
-        DLPy provides you with some predefined learning rate policies.
-        1. FixedLR
-        2. StepLR
-        3. MultiStepLR
-        4. PolynomialLR
-        5. ReduceLROnPlateau
-        6. CyclicLR
-        Besides, you can also customize your own learning rate policy.
-        You can find more examples at DLPy example folder.
     use_locking : bool, optional
         When it is false, the gradients are computed asynchronously with
         multiple threads.
@@ -2433,17 +2423,28 @@ class LBFGSolver(_Solver):
         thirteenth epochs.
     fcmp_learning_rate : string, optional
         specifies the FCMP learning rate function.
+    lr_scheduler : LRScheduler, optional
+        Specifies learning rate policy
+        DLPy provides you with some predefined learning rate policies.
+        1. FixedLR
+        2. StepLR
+        3. MultiStepLR
+        4. PolynomialLR
+        5. ReduceLROnPlateau
+        6. CyclicLR
+        Besides, you can also customize your own learning rate policy.
+        You can find more examples at DLPy example folder.
 
     Returns
     -------
     :class:`LBFGSolver`
 
     '''
-    def __init__(self, m, max_line_search_iters, max_iters, backtrack_ratio, lr_scheduler=None, use_locking=True,
+    def __init__(self, m, max_line_search_iters, max_iters, backtrack_ratio, use_locking=True,
                  clip_grad_max=None, clip_grad_min=None, learning_rate=None, learning_rate_policy=None,
-                 gamma=None, step_size=None, power=None, steps=None, fcmp_learning_rate=None):
-        _Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min,
-                         learning_rate, learning_rate_policy, gamma, step_size, power, steps, fcmp_learning_rate)
+                 gamma=None, step_size=None, power=None, steps=None, fcmp_learning_rate=None, lr_scheduler=None):
+        _Solver.__init__(self, use_locking, clip_grad_max, clip_grad_min, learning_rate, learning_rate_policy,
+                         gamma, step_size, power, steps, fcmp_learning_rate, lr_scheduler)
         self.set_method('lbfg')
         self.add_parameters('m', m)
         self.add_parameters('maxlinesearchiters', max_line_search_iters)
@@ -2457,17 +2458,6 @@ class NatGradSolver(_Solver):
 
     Parameters
     ----------
-    lr_scheduler : LRScheduler, optional
-        Specifies learning rate policy
-        DLPy provides you with some predefined learning rate policies.
-        1. FixedLR
-        2. StepLR
-        3. MultiStepLR
-        4. PolynomialLR
-        5. ReduceLROnPlateau
-        6. CyclicLR
-        Besides, you can also customize your own learning rate policy.
-        You can find more examples at DLPy example folder.
     approximation_type : int, optional
         Specifies the approximate natural gradient type.
     use_locking : bool, optional
@@ -2498,17 +2488,28 @@ class NatGradSolver(_Solver):
         thirteenth epochs.
     fcmp_learning_rate : string, optional
         specifies the FCMP learning rate function.
+    lr_scheduler : LRScheduler, optional
+        Specifies learning rate policy
+        DLPy provides you with some predefined learning rate policies.
+        1. FixedLR
+        2. StepLR
+        3. MultiStepLR
+        4. PolynomialLR
+        5. ReduceLROnPlateau
+        6. CyclicLR
+        Besides, you can also customize your own learning rate policy.
+        You can find more examples at DLPy example folder.
 
     Returns
     -------
     :class:`NatGradSolver`
 
     '''
-    def __init__(self, lr_scheduler=None, approximation_type=1, use_locking=True, clip_grad_max=None,
+    def __init__(self, approximation_type=1, use_locking=True, clip_grad_max=None,
                  clip_grad_min=None, learning_rate=None, learning_rate_policy=None,
-                 gamma=None, step_size=None, power=None, steps=None, fcmp_learning_rate=None):
-        _Solver.__init__(self, lr_scheduler, use_locking, clip_grad_max, clip_grad_min, learning_rate,
-                         learning_rate_policy, gamma, step_size, power, steps, fcmp_learning_rate)
+                 gamma=None, step_size=None, power=None, steps=None, fcmp_learning_rate=None, lr_scheduler=None):
+        _Solver.__init__(self, use_locking, clip_grad_max, clip_grad_min, learning_rate,
+                         learning_rate_policy, gamma, step_size, power, steps, fcmp_learning_rate, lr_scheduler)
         self.set_method('natgrad')
         self.add_parameter('approximationtype', approximation_type)
 
@@ -2637,7 +2638,7 @@ class Optimizer(DLPyDict):
     :class:`Optimizer`
 
     '''
-    def __init__(self, algorithm=VanillaSolver(StepLR()), mini_batch_size=1, seed=0, max_epochs=1, reg_l1=0, reg_l2=0,
+    def __init__(self, algorithm=VanillaSolver(lr_scheduler=StepLR()), mini_batch_size=1, seed=0, max_epochs=1, reg_l1=0, reg_l2=0,
                  dropout=0, dropout_input=0, dropout_type='standard', stagnation=0, threshold=0.00000001, f_conv=0,
                  snapshot_freq=0, log_level=0, bn_src_layer_warnings=True, freeze_layers_to=None, flush_weights=False,
                  total_mini_batch_size=None, mini_batch_buf_size=None, freeze_layers = None,
