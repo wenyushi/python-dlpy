@@ -51,7 +51,7 @@ def TextClassification(conn, model_table='text_classifier', neurons=10, n_blocks
         Default: 3
     rnn_type : string, optional
         Specifies the type of the rnn layer.
-        Default: RNN
+        Default: GRU
         Valid Values: RNN, LSTM, GRU
 
     Returns
@@ -100,7 +100,7 @@ def TextGeneration(conn, model_table='text_generator', neurons=10, max_output_le
         Default: 15
     rnn_type : string, optional
         Specifies the type of the rnn layer.
-        Default: RNN
+        Default: GRU
         Valid Values: RNN, LSTM, GRU
 
     Returns
@@ -151,7 +151,7 @@ def SequenceLabeling(conn, model_table='sequence_labeling_model', neurons=10, n_
         Default: 3
     rnn_type : string, optional
         Specifies the type of the rnn layer.
-        Default: RNN
+        Default: GRU
         Valid Values: RNN, LSTM, GRU
         
     Returns
@@ -190,7 +190,7 @@ def SpeechRecognition(conn, model_table='acoustic_model', neurons=10, n_blocks=3
         Default: 3
     rnn_type : string, optional
         Specifies the type of the rnn layer.
-        Default: RNN
+        Default: GRU
         Valid Values: RNN, LSTM, GRU
 
     Returns
@@ -222,6 +222,11 @@ def LeNet5(conn, model_table='LENET5', n_classes=10, n_channels=1, width=28, hei
         Specifies the CAS connection object.
     model_table : string, optional
         Specifies the name of CAS table to store the model.
+    n_classes : int, optional
+        Specifies the number of classes. If None is assigned, the model
+        will automatically detect the number of classes based on the
+        training set.
+        Default: 10
     n_channels : int, optional
         Specifies the number of the channels (i.e., depth) of the input layer.
         Default: 1
@@ -231,11 +236,6 @@ def LeNet5(conn, model_table='LENET5', n_classes=10, n_channels=1, width=28, hei
     height : int, optional
         Specifies the height of the input layer.
         Default: 28
-    n_classes : int, optional
-        Specifies the number of classes. If None is assigned, the model
-        will automatically detect the number of classes based on the
-        training set.
-        Default: 10
     scale : double, optional
         Specifies a scaling factor to be applied to each pixel intensity values.
         Default: 1.0 / 255
@@ -584,11 +584,11 @@ def VGG16(conn, model_table='VGG16', n_classes=1000, n_channels=3, width=224, he
         if pre_trained_weights_file is None:
             raise DLPyError('\nThe pre-trained weights file is not specified.\n'
                             'Please follow the steps below to attach the pre-trained weights:\n'
-                            '1. go to the website https://support.sas.com/documentation/prod-p/vdmml/zip/ '
+                            '1. Go to the website https://support.sas.com/documentation/prod-p/vdmml/zip/ '
                             'and download the associated weight file.\n'
-                            '2. upload the *.h5 file to '
+                            '2. Upload the *.h5 file to '
                             'a server side directory which the CAS session has access to.\n'
-                            '3. specify the pre_trained_weights_file using the fully qualified server side path.')
+                            '3. Specify the pre_trained_weights_file using the fully qualified server side path.')
 
         model_cas = model_vgg16.VGG16_Model(s=conn, model_table=model_table, n_channels=n_channels,
                                             width=width, height=height, random_crop=random_crop, offsets=offsets)
@@ -729,11 +729,11 @@ def VGG19(conn, model_table='VGG19', n_classes=1000, n_channels=3, width=224, he
         if pre_trained_weights_file is None:
             raise DLPyError('\nThe pre-trained weights file is not specified.\n'
                             'Please follow the steps below to attach the pre-trained weights:\n'
-                            '1. go to the website https://support.sas.com/documentation/prod-p/vdmml/zip/ '
+                            '1. Go to the website https://support.sas.com/documentation/prod-p/vdmml/zip/ '
                             'and download the associated weight file.\n'
-                            '2. upload the *.h5 file to '
+                            '2. Upload the *.h5 file to '
                             'a server side directory which the CAS session has access to.\n'
-                            '3. specify the pre_trained_weights_file using the fully qualified server side path.')
+                            '3. Specify the pre_trained_weights_file using the fully qualified server side path.')
 
         model_cas = model_vgg19.VGG19_Model(s=conn, model_table=model_table, n_channels=n_channels,
                                             width=width, height=height, random_crop=random_crop, offsets=offsets)
@@ -4440,7 +4440,7 @@ def InceptionV3(conn, model_table='InceptionV3',
             return model
 
 
-def UNet(conn, n_channels=3, width=512, height=512, scale=1.0 / 255, n_classes = 2, init = None):
+def UNet(conn, model_table='UNet', n_channels=3, width=512, height=512, scale=1.0 / 255, n_classes = 2, init = None):
     inputs = Input(n_channels = n_channels, width = width, height = height, scale = scale, name = 'InputLayer_1')
     conv1 = Conv2d(64, 3, act = 'relu', init = init)(inputs)
     conv1 = Conv2d(64, 3, act = 'relu', init = init)(conv1)
@@ -4461,25 +4461,25 @@ def UNet(conn, n_channels=3, width=512, height=512, scale=1.0 / 255, n_classes =
     conv5 = Conv2d(1024, 3, act = 'relu', init = init)(pool4)
     conv5 = Conv2d(1024, 3, act = 'relu', init = init)(conv5)
 
-    tconv6 = Conv2DTranspose(512, 3, stride = 2, act = 'relu', padding = 1, output_size = conv4._op.output_size,
+    tconv6 = Conv2DTranspose(512, 3, stride = 2, act = 'relu', padding = 1, output_size = conv4.shape,
                              init = init)(conv5)  # 64
     merge6 = Concat()([conv4, tconv6])
     conv6 = Conv2d(512, 3, act = 'relu', init = init)(merge6)
     conv6 = Conv2d(512, 3, act = 'relu', init = init)(conv6)
 
-    tconv7 = Conv2DTranspose(256, 3, stride = 2, act = 'relu', padding = 1, output_size = conv3._op.output_size,
+    tconv7 = Conv2DTranspose(256, 3, stride = 2, act = 'relu', padding = 1, output_size = conv3.shape,
                              init = init)(conv6)  # 128
     merge7 = Concat()([conv3, tconv7])
     conv7 = Conv2d(256, 3, act = 'relu', init = init)(merge7)
     conv7 = Conv2d(256, 3, act = 'relu', init = init)(conv7)
 
-    tconv8 = Conv2DTranspose(128, stride = 2, act = 'relu', padding = 1, output_size = conv2._op.output_size,
+    tconv8 = Conv2DTranspose(128, stride = 2, act = 'relu', padding = 1, output_size = conv2.shape,
                              init = init)(conv7)  # 256
     merge8 = Concat()([conv2, tconv8])
     conv8 = Conv2d(128, 3, act = 'relu', init = init)(merge8)
     conv8 = Conv2d(128, 3, act = 'relu', init = init)(conv8)
 
-    tconv9 = Conv2DTranspose(64, stride = 2, act = 'relu', padding = 1, output_size = conv1._op.output_size,
+    tconv9 = Conv2DTranspose(64, stride = 2, act = 'relu', padding = 1, output_size = conv1.shape,
                              init = init)(conv8)  # 512
     merge9 = Concat()([conv1, tconv9])
     conv9 = Conv2d(64, 3, act = 'relu', init = init)(merge9)
@@ -4488,12 +4488,12 @@ def UNet(conn, n_channels=3, width=512, height=512, scale=1.0 / 255, n_classes =
     conv9 = Conv2d(n_classes, 3, act = 'identity', init = init)(conv9)
 
     seg1 = Segmentation(name = 'Segmentation_1')(conv9)
-    model = Model(conn, inputs = inputs, outputs = seg1)
+    model = Model(conn, inputs = inputs, outputs = seg1, model_table = model_table)
     model.compile()
     return model
 
 
-def Nest_Net(conn, n_channels=1, width=512, height=512, scale=1.0 / 255, n_classes = 2, deep_supervision=True):
+def Nest_Net(conn, model_table='Nest_Net', n_channels=1, width=512, height=512, scale=1.0 / 255, n_classes = 2, deep_supervision=True):
     def standard_unit(input_tensor, stage, nb_filter, kernel_size = 3):
         x = Conv2d(nb_filter, kernel_size, act = 'relu', name = 'conv' + stage + '_1')(input_tensor)
         x = Conv2d(nb_filter, kernel_size, act = 'relu', name = 'conv' + stage + '_2')(x)
@@ -4510,7 +4510,7 @@ def Nest_Net(conn, n_channels=1, width=512, height=512, scale=1.0 / 255, n_class
     pool2 = Pooling(width = 2, height = 2, stride=2, name='pool2')(conv2_1)
 
     up1_2 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up12', padding=1,
-                            output_size = conv1_1._op.output_size)(conv2_1)
+                            output_size = conv1_1.shape)(conv2_1)
     conv1_2 = Concat(name='merge12')([up1_2, conv1_1])
     conv1_2 = standard_unit(conv1_2, stage='12', nb_filter=nb_filter[0])
 
@@ -4518,12 +4518,12 @@ def Nest_Net(conn, n_channels=1, width=512, height=512, scale=1.0 / 255, n_class
     pool3 = Pooling(width = 2, height = 2, stride=2, name='pool3')(conv3_1)
 
     up2_2 = Conv2DTranspose(nb_filter[1], 3, stride=2, act = 'relu', name='up22', padding=1,
-                            output_size = conv2_1._op.output_size)(conv3_1)
+                            output_size = conv2_1.shape)(conv3_1)
     conv2_2 = Concat(name='merge22')([up2_2, conv2_1])
     conv2_2 = standard_unit(conv2_2, stage='22', nb_filter=nb_filter[1])
 
     up1_3 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up13', padding=1,
-                            output_size = conv1_1._op.output_size)(conv2_2)
+                            output_size = conv1_1.shape)(conv2_2)
     conv1_3 = Concat(name='merge13')([up1_3, conv1_1, conv1_2])
     conv1_3 = standard_unit(conv1_3, stage='13', nb_filter=nb_filter[0])
 
@@ -4531,39 +4531,39 @@ def Nest_Net(conn, n_channels=1, width=512, height=512, scale=1.0 / 255, n_class
     pool4 = Pooling(width = 2, height = 2, stride=2, name='pool4')(conv4_1)
 
     up3_2 = Conv2DTranspose(nb_filter[2], 3, stride=2, act = 'relu', name='up32', padding=1,
-                            output_size = conv3_1._op.output_size)(conv4_1)
+                            output_size = conv3_1.shape)(conv4_1)
     conv3_2 = Concat(name='merge32')([up3_2, conv3_1])
     conv3_2 = standard_unit(conv3_2, stage='32', nb_filter=nb_filter[2])
 
     up2_3 = Conv2DTranspose(nb_filter[1], 3, stride=2, act = 'relu', name='up23', padding=1,
-                            output_size = conv2_1._op.output_size)(conv3_2)
+                            output_size = conv2_1.shape)(conv3_2)
     conv2_3 = Concat(name='merge23')([up2_3, conv2_1, conv2_2])
     conv2_3 = standard_unit(conv2_3, stage='23', nb_filter=nb_filter[1])
 
     up1_4 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up14', padding=1,
-                            output_size = conv1_1._op.output_size)(conv2_3)
+                            output_size = conv1_1.shape)(conv2_3)
     conv1_4 = Concat(name='merge14')([up1_4, conv1_1, conv1_2, conv1_3])
     conv1_4 = standard_unit(conv1_4, stage='14', nb_filter=nb_filter[0])
 
     conv5_1 = standard_unit(pool4, stage='51', nb_filter=nb_filter[4])
 
     up4_2 = Conv2DTranspose(nb_filter[3], 3, stride=2, act = 'relu', name='up42', padding=1,
-                            output_size = conv4_1._op.output_size)(conv5_1)
+                            output_size = conv4_1.shape)(conv5_1)
     conv4_2 = Concat(name='merge42')([up4_2, conv4_1])
     conv4_2 = standard_unit(conv4_2, stage='42', nb_filter=nb_filter[3])
 
     up3_3 = Conv2DTranspose(nb_filter[2], 3, stride=2, act = 'relu', name='up33', padding=1,
-                            output_size = conv3_1._op.output_size)(conv4_2)
+                            output_size = conv3_1.shape)(conv4_2)
     conv3_3 = Concat(name='merge33')([up3_3, conv3_1, conv3_2])
     conv3_3 = standard_unit(conv3_3, stage='33', nb_filter=nb_filter[2])
 
     up2_4 = Conv2DTranspose(nb_filter[1], 3, stride=2, act = 'relu', name='up24', padding=1,
-                            output_size = conv2_1._op.output_size)(conv3_3)
+                            output_size = conv2_1.shape)(conv3_3)
     conv2_4 = Concat(name='merge24')([up2_4, conv2_1, conv2_2, conv2_3])
     conv2_4 = standard_unit(conv2_4, stage='24', nb_filter=nb_filter[1])
 
     up1_5 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up15', padding=1,
-                            output_size = conv1_1._op.output_size)(conv2_4)
+                            output_size = conv1_1.shape)(conv2_4)
     conv1_5 = Concat(name='merge15')([up1_5, conv1_1, conv1_2, conv1_3, conv1_4])
     conv1_5 = standard_unit(conv1_5, stage='15', nb_filter=nb_filter[0])
 
@@ -4578,16 +4578,16 @@ def Nest_Net(conn, n_channels=1, width=512, height=512, scale=1.0 / 255, n_class
     seg4 = Segmentation(name = 'Segmentation_4')(nestnet_output_4)
 
     if deep_supervision:
-        model = Model(conn, inputs=inputs, outputs=[seg1, seg2, seg3, seg4])
+        model = Model(conn, inputs=inputs, outputs=[seg1, seg2, seg3, seg4], model_table = model_table)
     else:
-        model = Model(conn, inputs=inputs, outputs=[seg4])
+        model = Model(conn, inputs=inputs, outputs=[seg4], model_table = model_table)
 
     model.compile()
 
     return model
 
 
-def Faster_RCNN(conn, n_channels=3, width=1000, height=496, scale=1,
+def Faster_RCNN(conn, model_table='Faster_RCNN', n_channels=3, width=1000, height=496, scale=1,
                 offsets=[102.9801,115.9465,122.7717], random_mutation = 'none',
                 n_classes=20, anchor_num_to_sample = 256, anchor_scale = [8, 16, 32], anchor_ratio = [0.5, 1, 2],
                 base_anchor_size = 16, coord_type = 'coco', max_label_per_image = 200, proposed_roi_num_train = 2000,
@@ -4596,7 +4596,7 @@ def Faster_RCNN(conn, n_channels=3, width=1000, height=496, scale=1,
                 nms_iou_threshold = 0.3, detection_threshold = 0.5, max_objec_num = 50):
     num_anchors = len(anchor_ratio) * len(anchor_scale)
     inp = Input(n_channels = n_channels, width = width, height = height, scale = scale, offsets = offsets,
-                random_mutation = random_mutation)
+                random_mutation = random_mutation, name='data')
 
     conv1_1 = Conv2d(n_filters = 64, width = 3, height = 3, stride = 1, name='conv1_1')(inp)
     conv1_2 = Conv2d(n_filters = 64, width = 3, height = 3, stride = 1, name='conv1_2')(conv1_1)
@@ -4642,7 +4642,7 @@ def Faster_RCNN(conn, n_channels=3, width=1000, height=496, scale=1,
     fr1 = FastRCNN(nms_iou_threshold = nms_iou_threshold, max_label_per_image = max_label_per_image,
                    max_object_num = max_objec_num,  detection_threshold = detection_threshold,
                    class_number = n_classes, name = 'fastrcnn')([cls1, reg1, rp1])
-    faster_rcnn = Model(conn, inp, fr1)
+    faster_rcnn = Model(conn, inp, fr1, model_table = model_table)
     faster_rcnn.compile()
     return faster_rcnn
 

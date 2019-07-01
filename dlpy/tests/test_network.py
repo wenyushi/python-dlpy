@@ -177,7 +177,7 @@ class TestNetwork(tm.TestCase):
         model.print_summary()
 
     def test_network_transpose_conv(self):
-        inputs = Input(3, 128, 64, scale = 0.004, name = 'input1')
+        inputs = Input(3, height = 128, width = 64, scale = 0.004, name = 'input1')
         tconv1 = Conv2DTranspose(32, height = 5, width = 3, stride = 2, padding_height = 2,
                                  padding_width = 1, output_size = (256, 128, 32), name = 'trans1')(inputs)
         seg1 = Segmentation(name = 'seg1')(tconv1)

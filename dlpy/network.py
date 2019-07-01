@@ -124,11 +124,11 @@ class Network(Layer):
             # if the node is visited, continue
             if start in self.layers:
                 return
-            # if the node is an input layer, add it and return
-            if start in self.input_layers and start.type != 'model':
-                self.layers.append(start)
-                return
+            # exit if observe an input layer
             if start.type == 'input':
+                # add into layer list if it is a valid input tensor
+                if start in self.input_layers:
+                    self.layers.append(start)
                 return
             for src_layer in start.src_layers:
                 build_map(src_layer)
