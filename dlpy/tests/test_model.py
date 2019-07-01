@@ -100,7 +100,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(r.severity <= 1)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model2(self):
         model1 = Sequential(self.s, model_table='Simple_CNN1')
@@ -128,7 +128,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(r2.severity == 0)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model3(self):
         model1 = Sequential(self.s, model_table='Simple_CNN1')
@@ -162,7 +162,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(r3.severity == 0)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model4(self):
         model1 = Sequential(self.s, model_table='Simple_CNN1')
@@ -190,7 +190,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(r2.severity == 0)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model5(self):
         model1 = Sequential(self.s, model_table='Simple_CNN1')
@@ -224,7 +224,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(r3.severity == 0)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model6(self):
         model1 = Sequential(self.s, model_table='Simple_CNN1')
@@ -249,7 +249,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(r.severity == 0)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model7(self):
         model1 = Sequential(self.s, model_table='Simple_CNN1')
@@ -277,7 +277,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(r2.severity == 0)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model8(self):
         model1 = Sequential(self.s, model_table='Simple_CNN1')
@@ -305,7 +305,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(r2.severity == 0)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model9(self):
         model1 = Sequential(self.s, model_table='Simple_CNN1')
@@ -333,7 +333,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(r2.severity == 0)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model10(self):
         model1 = Sequential(self.s, model_table='Simple_CNN1')
@@ -363,7 +363,7 @@ class TestModel(unittest.TestCase):
         model1.save_to_table(self.data_dir)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model11(self):
         model1 = Sequential(self.s, model_table='Simple_CNN1')
@@ -397,7 +397,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(r3.severity == 0)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model12(self):
         model1 = Sequential(self.s, model_table='Simple_CNN1')
@@ -431,7 +431,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(r3.severity == 0)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_model13(self):
         model = Sequential(self.s, model_table='simple_cnn')
@@ -559,275 +559,7 @@ class TestModel(unittest.TestCase):
         model1.save_weights_csv(self.data_dir)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
-
-    def test_model19(self):
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        model1 = Sequential(self.s, model_table='Simple_CNN1')
-        model1.add(InputLayer(3, 224, 224))
-        model1.add(Conv2d(8, 7))
-        model1.add(Pooling(2))
-        model1.add(Conv2d(8, 7))
-        model1.add(Pooling(2))
-        model1.add(Dense(16))
-        model1.add(OutputLayer(act='softmax', n=2))
-
-        if self.data_dir is None:
-            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
-
-        caslib, path, tmp_caslib = caslibify(self.s, path=self.data_dir+'images.sashdat', task='load')
-
-        self.s.table.loadtable(caslib=caslib,
-                               casout={'name': 'eee', 'replace': True},
-                               path=path)
-
-        r = model1.fit(data='eee', inputs='_image_', target='_label_', max_epochs=1)
-        self.assertTrue(r.severity == 0)
-
-        model1.deploy(self.data_dir, output_format='onnx')
-
-        if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
-
-    def test_model20(self):
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        model1 = Sequential(self.s, model_table='Simple_CNN1')
-        model1.add(InputLayer(3, 224, 224))
-        model1.add(Conv2d(8, 7))
-        model1.add(Pooling(2))
-        model1.add(Conv2d(8, 7))
-        model1.add(Pooling(2))
-        model1.add(Dense(16))
-        model1.add(OutputLayer(act='softmax', n=2))
-
-        if self.data_dir is None:
-            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
-
-        caslib, path, tmp_caslib = caslibify(self.s, path=self.data_dir+'images.sashdat', task='load')
-
-        self.s.table.loadtable(caslib=caslib,
-                               casout={'name': 'eee', 'replace': True},
-                               path=path)
-
-        r = model1.fit(data='eee', inputs='_image_', target='_label_', max_epochs=1)
-        self.assertTrue(r.severity == 0)
-
-        model1.save_weights_csv(self.data_dir)
-        weights_path = os.path.join(self.data_dir, 'Simple_CNN1_weights.csv')
-        model1.deploy(self.data_dir_local, output_format='onnx', model_weights=weights_path)
-
-        if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
-
-    def test_model21(self):
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        model1 = Sequential(self.s, model_table='Simple_CNN1')
-        model1.add(InputLayer(3, 224, 224))
-        model1.add(Conv2d(8, 7))
-        pool1 = Pooling(2)
-        model1.add(pool1)
-        conv1 = Conv2d(1, 7, src_layers=[pool1])
-        conv2 = Conv2d(1, 7, src_layers=[pool1])
-        model1.add(conv1)
-        model1.add(conv2)
-        model1.add(Concat(act='identity', src_layers=[conv1, conv2]))
-        model1.add(Pooling(2))
-        model1.add(Dense(2))
-        model1.add(OutputLayer(act='softmax', n=2))
-
-        if self.data_dir is None:
-            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
-
-        caslib, path, tmp_caslib = caslibify(self.s, path=self.data_dir+'images.sashdat', task='load')
-
-        self.s.table.loadtable(caslib=caslib,
-                               casout={'name': 'eee', 'replace': True},
-                               path=path)
-
-        r = model1.fit(data='eee', inputs='_image_', target='_label_', max_epochs=1)
-        self.assertTrue(r.severity == 0)
-
-        model1.deploy(self.data_dir, output_format='onnx')
-
-        if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
-
-    def test_model22(self):
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        model1 = Sequential(self.s, model_table='Simple_CNN1')
-        model1.add(InputLayer(3, 224, 224))
-        model1.add(Conv2d(8, 7))
-        pool1 = Pooling(2)
-        model1.add(pool1)
-        conv1 = Conv2d(1, 1, act='identity', src_layers=[pool1])
-        model1.add(conv1)
-        model1.add(Res(act='relu', src_layers=[conv1, pool1]))
-        model1.add(Pooling(2))
-        model1.add(Dense(2))
-        model1.add(OutputLayer(act='softmax', n=2))
-
-        if self.data_dir is None:
-            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
-
-        caslib, path, tmp_caslib = caslibify(self.s, path=self.data_dir+'images.sashdat', task='load')
-
-        self.s.table.loadtable(caslib=caslib,
-                               casout={'name': 'eee', 'replace': True},
-                               path=path)
-
-        r = model1.fit(data='eee', inputs='_image_', target='_label_', max_epochs=1)
-        self.assertTrue(r.severity == 0)
-
-        model1.deploy(self.data_dir, output_format='onnx')
-
-        if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
-
-    def test_model22_1(self):
-        try:
-            import onnx
-            from onnx import numpy_helper
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        import numpy as np
-
-        model1 = Sequential(self.s, model_table='Simple_CNN1')
-        model1.add(InputLayer(3, 224, 224))
-        model1.add(Conv2d(8, 7, act='identity', include_bias=False))
-        model1.add(Reshape(height=448, width=448, depth=2))
-        model1.add(Dense(2))
-        model1.add(OutputLayer(act='softmax', n=2))
-
-        if self.data_dir is None:
-            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
-
-        caslib, path, tmp_caslib = caslibify(self.s, path=self.data_dir+'images.sashdat', task='load')
-
-        self.s.table.loadtable(caslib=caslib,
-                               casout={'name': 'eee', 'replace': True},
-                               path=path)
-
-        r = model1.fit(data='eee', inputs='_image_', target='_label_', max_epochs=1)
-        self.assertTrue(r.severity == 0)
-
-        if self.data_dir_local is None:
-            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR_LOCAL is not set in the environment variables")
-
-        model1.deploy(self.data_dir_local, output_format='onnx')
-
-        model_path = os.path.join(self.data_dir_local, 'Simple_CNN1.onnx')
-        m = onnx.load(model_path)
-        self.assertEqual(m.graph.node[1].op_type, 'Reshape')
-        init = numpy_helper.to_array(m.graph.initializer[1])
-        self.assertTrue(np.array_equal(init, [ -1,  2, 448, 448]))
-
-        if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
-
-    def test_model23(self):
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        model1 = Sequential(self.s, model_table='Simple_CNN1')
-        model1.add(InputLayer(3, 224, 224))
-        model1.add(Conv2d(8, 7, act='identity', include_bias=False))
-        model1.add(BN(act='relu'))
-        model1.add(Pooling(2))
-        model1.add(Conv2d(8, 7, act='identity', include_bias=False))
-        model1.add(BN(act='relu'))
-        model1.add(Pooling(2))
-        model1.add(Dense(2))
-        model1.add(OutputLayer(act='softmax', n=2))
-
-        if self.data_dir is None:
-            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
-
-        caslib, path, tmp_caslib = caslibify(self.s, path=self.data_dir+'images.sashdat', task='load')
-
-        self.s.table.loadtable(caslib=caslib,
-                               casout={'name': 'eee', 'replace': True},
-                               path=path)
-
-        r = model1.fit(data='eee', inputs='_image_', target='_label_', max_epochs=1)
-        self.assertTrue(r.severity == 0)
-
-        model1.deploy(self.data_dir, output_format='onnx')
-
-        if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
-
-    def test_model24(self):
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        m = onnx.load(os.path.join(os.path.dirname(__file__), 'datasources', 'model.onnx'))
-        model1 = Model.from_onnx_model(self.s, m)
-        model1.print_summary()
-
-    def test_model25(self):
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        m = onnx.load(os.path.join(os.path.dirname(__file__), 'datasources', 'model.onnx'))
-        model1 = Model.from_onnx_model(self.s, m, offsets=[1, 1, 1,], scale=2, std='std')
-        model1.print_summary()
-
-    def test_model26(self):
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        if self.data_dir_local is None:
-            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR_LOCAL is not set in "
-                                             "the environment variables")
-
-        m = onnx.load(os.path.join(self.data_dir_local, 'Simple_CNN1.onnx'))
-        model1 = Model.from_onnx_model(self.s, m, offsets=[1, 1, 1,], scale=2, std='std')
-        model1.print_summary()
-
-    def test_model27(self):
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        m = onnx.load(os.path.join(os.path.dirname(__file__), 'datasources', 'pytorch_net1.onnx'))
-        model1 = Model.from_onnx_model(self.s, m, offsets=[1, 1, 1,], scale=2, std='std')
-        model1.print_summary()
-
-    def test_model28(self):
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        m = onnx.load(os.path.join(os.path.dirname(__file__), 'datasources', 'pytorch_net2.onnx'))
-        model1 = Model.from_onnx_model(self.s, m, offsets=[1, 1, 1,], scale=2, std='std')
-        model1.print_summary()
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_evaluate_obj_det(self):
 
@@ -868,51 +600,6 @@ class TestModel(unittest.TestCase):
 
         if (caslib is not None) and tmp_caslib:
             self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
-
-    def test_model29(self):
-        # test specifying output layer in Model.from_onnx_model
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        if self.data_dir_local is None:
-            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR_LOCAL is not set in "
-                                             "the environment variables")
-
-        m = onnx.load(os.path.join(self.data_dir_local, 'Simple_CNN1.onnx'))
-        output_layer = OutputLayer(n=100)
-        model1 = Model.from_onnx_model(conn=self.s,
-                                       onnx_model=m,
-                                       offsets=[1, 1, 1,],
-                                       scale=2,
-                                       std='std',
-                                       output_layer=output_layer)
-
-        self.assertTrue(model1.layers[-1].config['n'] == 100)
-
-    def test_model30(self):
-        # test specifying output layer in Model.from_onnx_model
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, "onnx not found in the libraries")
-
-        if self.data_dir_local is None:
-            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR_LOCAL is not set in "
-                                             "the environment variables")
-
-        m = onnx.load(os.path.join(self.data_dir_local, 'Simple_CNN1.onnx'))
-        output_layer = OutputLayer(name='test_output', n=50)
-        model1 = Model.from_onnx_model(conn=self.s,
-                                       onnx_model=m,
-                                       offsets=[1, 1, 1,],
-                                       scale=2,
-                                       std='std',
-                                       output_layer=output_layer)
-
-        self.assertTrue(model1.layers[-1].name == 'test_output')
-        self.assertTrue(model1.layers[-1].config['n'] == 50)
         
     def test_model_forecast1(self):
         
@@ -951,7 +638,7 @@ class TestModel(unittest.TestCase):
         model1.add(Recurrent(rnn_type='LSTM', output_type='encoding', n=15, reversed_=False))
         model1.add(OutputLayer(act='IDENTITY'))
         
-        optimizer = Optimizer(algorithm=AdamSolver(StepLR()), mini_batch_size=32,
+        optimizer = Optimizer(algorithm=AdamSolver(lr_scheduler = StepLR()), mini_batch_size=32,
                               seed=1234, max_epochs=10)                    
         seq_spec  = Sequence(**traintbl.sequence_opt)
         result = model1.fit(traintbl, valid_table=validtbl, optimizer=optimizer, 
@@ -1028,7 +715,7 @@ class TestModel(unittest.TestCase):
         model1.add(Recurrent(rnn_type='LSTM', output_type='encoding', n=15, reversed_=False))
         model1.add(OutputLayer(act='IDENTITY'))
         
-        optimizer = Optimizer(algorithm=AdamSolver(StepLR()), mini_batch_size=32,
+        optimizer = Optimizer(algorithm=AdamSolver(lr_scheduler = StepLR()), mini_batch_size=32,
                               seed=1234, max_epochs=10)                    
         seq_spec  = Sequence(**traintbl.sequence_opt)
         result = model1.fit(traintbl, valid_table=validtbl, optimizer=optimizer, 
@@ -1124,7 +811,7 @@ class TestModel(unittest.TestCase):
         model1.add(Recurrent(rnn_type='LSTM', output_type='encoding', n=15, reversed_=False))
         model1.add(OutputLayer(act='IDENTITY'))
         
-        optimizer = Optimizer(algorithm=AdamSolver(StepLR()), mini_batch_size=32,
+        optimizer = Optimizer(algorithm=AdamSolver(lr_scheduler = StepLR()), mini_batch_size=32,
                               seed=1234, max_epochs=10)                    
         seq_spec  = Sequence(**traintbl.sequence_opt)
         result = model1.fit(traintbl, optimizer=optimizer, 
@@ -1166,114 +853,6 @@ class TestModel(unittest.TestCase):
         
         with self.assertRaises(RuntimeError):
             resulttbl3 = model1.forecast(testtbl, horizon=3)
-
-    def test_imagescaler1(self):
-        # test import model with imagescaler
-        try:
-            import onnx
-            from onnx import helper, TensorProto
-        except:
-            unittest.TestCase.skipTest(self, 'onnx not found')
-
-        if self.data_dir_local is None:
-            unittest.TestCase.skipTest(self, 'DLPY_DATA_DIR_LOCAL is not set in '
-                                             'the environment variables')
-
-        import numpy as np
-        n1 = helper.make_node('ImageScaler',
-                              ['X'],
-                              ['X1'],
-                              bias=[0., 0., 0.],
-                              scale=1.)
-        n2 = helper.make_node('Conv',
-                              inputs=['X1', 'W1'],
-                              outputs=['X2'],
-                              kernel_shape=[3, 3],
-                              pads=[0, 0, 0, 0])
-        n3 = helper.make_node('MatMul',
-                              inputs=['X2', 'W2'],
-                              outputs=['X3'])
-
-        W1 = np.ones((3, 3, 3)).astype(np.float32)
-        W2 = np.ones((9, 2)).astype(np.float32)
-
-        graph_def = helper.make_graph(
-            [n1, n2, n3],
-            name='test',
-            inputs=[
-                helper.make_tensor_value_info('X',
-                                              TensorProto.FLOAT,
-                                              [1, 3, 10, 10]),
-                helper.make_tensor_value_info('W1',
-                                              TensorProto.FLOAT,
-                                              [3, 3, 3]),
-                helper.make_tensor_value_info('W2',
-                                              TensorProto.FLOAT,
-                                              [9, 2])],
-            outputs=[
-                helper.make_tensor_value_info('X3',
-                                              TensorProto.FLOAT,
-                                              [1, 2])],
-            initializer=[
-                helper.make_tensor('W1',
-                                   TensorProto.FLOAT,
-                                   [3, 3, 3],
-                                   W1.flatten().astype(np.float32)),
-                helper.make_tensor('W2',
-                                   TensorProto.FLOAT,
-                                   [9, 2],
-                                   W2.flatten().astype(np.float32))])
-        onnx_model =  helper.make_model(graph_def)
-
-        model1 = Model.from_onnx_model(self.s, onnx_model)
-
-        l1 = model1.layers[0]
-        self.assertTrue(l1.type == 'input')
-        self.assertTrue(l1.config['offsets'] == [0., 0., 0.])
-        self.assertTrue(l1.config['scale'] == 1.)
-
-    def test_imagescaler2(self):
-        # test export model with imagescaler
-        try:
-            import onnx
-        except:
-            unittest.TestCase.skipTest(self, 'onnx not found')
-
-        if self.data_dir_local is None:
-            unittest.TestCase.skipTest(self, 'DLPY_DATA_DIR_LOCAL is not set in '
-                                             'the environment variables')
-
-        model1 = Sequential(self.s, model_table='imagescaler2')
-        model1.add(InputLayer(n_channels=3,
-                              width=224,
-                              height=224,
-                              scale=1/255.,
-                              offsets=[0.1, 0.2, 0.3]))
-        model1.add(Conv2d(8, 7))
-        model1.add(Pooling(2))
-        model1.add(OutputLayer(act='softmax', n=2))
-
-        caslib, path, tmp_caslib = caslibify(self.s,
-                                 path=self.data_dir+'images.sashdat',
-                                 task='load')
-        self.s.table.loadtable(caslib=caslib,
-                               casout={'name': 'eee', 'replace': True},
-                               path=path)
-        r = model1.fit(data='eee', inputs='_image_', target='_label_', max_epochs=1)
-        self.assertTrue(r.severity == 0)
-
-        from dlpy.model_conversion.write_onnx_model import sas_to_onnx
-        onnx_model = sas_to_onnx(model1.layers,
-                                 self.s.CASTable('imagescaler2'),
-                                 self.s.CASTable('imagescaler2_weights'))
-
-        self.assertAlmostEqual(onnx_model.graph.node[0].attribute[0].floats[0], 0.1)
-        self.assertAlmostEqual(onnx_model.graph.node[0].attribute[0].floats[1], 0.2)
-        self.assertAlmostEqual(onnx_model.graph.node[0].attribute[0].floats[2], 0.3)
-        self.assertAlmostEqual(onnx_model.graph.node[0].attribute[1].f, 1/255.)
-
-        if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_load_reshape_detection(self):
         if self.data_dir is None:
@@ -1334,7 +913,7 @@ class TestModel(unittest.TestCase):
         self.assertEqual(len(ax.xaxis.majorTicks), model1.n_epochs)
 
         if (caslib is not None) and tmp_caslib:
-            self._retrieve_('table.dropcaslib', message_level = 'error', caslib = caslib)
+            self.s.retrieve('table.dropcaslib', message_level = 'error', caslib = caslib)
 
     def test_faster_rcnn_import(self):
         if self.data_dir is None:
@@ -1344,7 +923,7 @@ class TestModel(unittest.TestCase):
 
     def test_stride(self):
         model = Sequential(self.s, model_table = 'Simple_CNN_3classes_cropped')
-        model.add(InputLayer(1, width = 36, height = 144,  # offsets = myimage.channel_means,
+        model.add(InputLayer(1, width = 36, height = 144, #offsets = myimage.channel_means,
                              name = 'input1',
                              random_mutation = 'random',
                              random_flip = 'HV'))
@@ -1393,6 +972,47 @@ class TestModel(unittest.TestCase):
         model.add(OutputLayer(act = 'softmax', n = 3, name = 'output1'))
         self.assertEqual(model.summary['Output Size'].values[-3], (1, 1, 1024))
         model.print_summary()
+
+    def test_heat_map_analysis(self):
+        if self.data_dir is None:
+            unittest.TestCase.skipTest(self, 'DLPY_DATA_DIR is not set in the environment variables')
+
+        from dlpy.applications import ResNet50_Caffe
+        from dlpy.images import ImageTable
+
+        pre_train_weight_file = os.path.join(self.data_dir, 'ResNet-50-model.caffemodel.h5')
+        my_im = ImageTable.load_files(self.s, self.data_dir+'giraffe_dolphin_small')
+        my_im_r = my_im.resize(width=224, inplace=False)
+
+        model = ResNet50_Caffe(self.s, model_table='ResNet50_Caffe',
+                               n_classes=2, n_channels=3, width=224, height=224, scale=1,
+                               random_flip='none', random_crop='none',
+                               offsets=my_im_r.channel_means, pre_trained_weights=True,
+                               pre_trained_weights_file=pre_train_weight_file,
+                               include_top=False)
+        model.fit(data=my_im_r, mini_batch_size=1, max_epochs=1)
+        model.heat_map_analysis(data=my_im_r, mask_width=None, mask_height=None, step_size=None,
+                                 max_display=1)
+
+        self.assertRaises(ValueError, lambda:model.heat_map_analysis(mask_width=56, mask_height=56,
+                           step_size=8, display=False))
+
+        self.assertRaises(ValueError, lambda:model.heat_map_analysis(data=my_im, mask_width=56,
+                           mask_height=56, step_size=8, display=False))
+
+        try:
+            from numpy import array
+        except:
+            unittest.TestCase.skipTest(self, 'numpy is not installed')
+        self.assertRaises(ValueError, lambda:model.heat_map_analysis(data=array([]), mask_width=56,
+                           mask_height=56, step_size=8, display=False))
+
+    def test_load_padding(self):
+        if self.data_dir is None:
+            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
+        model5 = Model(self.s)
+        model5.load(path = self.data_dir + 'vgg16.sashdat')
+
 
     @classmethod
     def tearDownClass(cls):
