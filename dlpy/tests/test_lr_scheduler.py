@@ -30,11 +30,7 @@ import json
 
 
 class TestLRScheduler(unittest.TestCase):
-    '''
-    If you are using dlpy on a Windows machine, then copy datasources/dlpy_obj_det_test to both DLPY_DATA_DIR and
-    DLPY_DATA_DIR_LOCAL. If you are using dlpy on a linux machine, then copy datasources/dlpy_obj_det_test to
-    DLPY_DATA_DIR only.
-    '''
+
     server_type = None
     s = None
     server_sep = '/'
