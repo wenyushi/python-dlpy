@@ -4703,25 +4703,25 @@ def UNet(conn, model_table='UNet', n_channels=3, width=512, height=512, scale=1.
     conv5 = Conv2d(1024, 3, act = 'relu', init = init)(pool4)
     conv5 = Conv2d(1024, 3, act = 'relu', init = init)(conv5)
 
-    tconv6 = Conv2DTranspose(512, 3, stride = 2, act = 'relu', padding = 1, output_size = conv4.shape,
+    tconv6 = Conv2DTranspose(512, 2, stride = 2, act = 'relu', padding = 1, output_size = conv4.shape,
                              init = init)(conv5)  # 64
     merge6 = Concat()([conv4, tconv6])
     conv6 = Conv2d(512, 3, act = 'relu', init = init)(merge6)
     conv6 = Conv2d(512, 3, act = 'relu', init = init)(conv6)
 
-    tconv7 = Conv2DTranspose(256, 3, stride = 2, act = 'relu', padding = 1, output_size = conv3.shape,
+    tconv7 = Conv2DTranspose(256, 2, stride = 2, act = 'relu', padding = 1, output_size = conv3.shape,
                              init = init)(conv6)  # 128
     merge7 = Concat()([conv3, tconv7])
     conv7 = Conv2d(256, 3, act = 'relu', init = init)(merge7)
     conv7 = Conv2d(256, 3, act = 'relu', init = init)(conv7)
 
-    tconv8 = Conv2DTranspose(128, stride = 2, act = 'relu', padding = 1, output_size = conv2.shape,
+    tconv8 = Conv2DTranspose(128, 2, stride = 2, act = 'relu', padding = 1, output_size = conv2.shape,
                              init = init)(conv7)  # 256
     merge8 = Concat()([conv2, tconv8])
     conv8 = Conv2d(128, 3, act = 'relu', init = init)(merge8)
     conv8 = Conv2d(128, 3, act = 'relu', init = init)(conv8)
 
-    tconv9 = Conv2DTranspose(64, stride = 2, act = 'relu', padding = 1, output_size = conv1.shape,
+    tconv9 = Conv2DTranspose(64, 2, stride = 2, act = 'relu', padding = 1, output_size = conv1.shape,
                              init = init)(conv8)  # 512
     merge9 = Concat()([conv1, tconv9])
     conv9 = Conv2d(64, 3, act = 'relu', init = init)(merge9)
@@ -4752,7 +4752,7 @@ def Nest_Net(conn, model_table='Nest_Net', n_channels=1, width=512, height=512, 
     conv2_1 = standard_unit(pool1, stage='21', nb_filter=nb_filter[1])
     pool2 = Pooling(width = 2, height = 2, stride=2, name='pool2')(conv2_1)
 
-    up1_2 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up12', padding=1,
+    up1_2 = Conv2DTranspose(nb_filter[0], 2, stride=2, act = 'relu', name='up12', padding=1,
                             output_size = conv1_1.shape)(conv2_1)
     conv1_2 = Concat(name='merge12')([up1_2, conv1_1])
     conv1_2 = standard_unit(conv1_2, stage='12', nb_filter=nb_filter[0])
@@ -4760,12 +4760,12 @@ def Nest_Net(conn, model_table='Nest_Net', n_channels=1, width=512, height=512, 
     conv3_1 = standard_unit(pool2, stage='31', nb_filter=nb_filter[2])
     pool3 = Pooling(width = 2, height = 2, stride=2, name='pool3')(conv3_1)
 
-    up2_2 = Conv2DTranspose(nb_filter[1], 3, stride=2, act = 'relu', name='up22', padding=1,
+    up2_2 = Conv2DTranspose(nb_filter[1], 2, stride=2, act = 'relu', name='up22', padding=1,
                             output_size = conv2_1.shape)(conv3_1)
     conv2_2 = Concat(name='merge22')([up2_2, conv2_1])
     conv2_2 = standard_unit(conv2_2, stage='22', nb_filter=nb_filter[1])
 
-    up1_3 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up13', padding=1,
+    up1_3 = Conv2DTranspose(nb_filter[0], 2, stride=2, act = 'relu', name='up13', padding=1,
                             output_size = conv1_1.shape)(conv2_2)
     conv1_3 = Concat(name='merge13')([up1_3, conv1_1, conv1_2])
     conv1_3 = standard_unit(conv1_3, stage='13', nb_filter=nb_filter[0])
@@ -4773,39 +4773,39 @@ def Nest_Net(conn, model_table='Nest_Net', n_channels=1, width=512, height=512, 
     conv4_1 = standard_unit(pool3, stage='41', nb_filter=nb_filter[3])
     pool4 = Pooling(width = 2, height = 2, stride=2, name='pool4')(conv4_1)
 
-    up3_2 = Conv2DTranspose(nb_filter[2], 3, stride=2, act = 'relu', name='up32', padding=1,
+    up3_2 = Conv2DTranspose(nb_filter[2], 2, stride=2, act = 'relu', name='up32', padding=1,
                             output_size = conv3_1.shape)(conv4_1)
     conv3_2 = Concat(name='merge32')([up3_2, conv3_1])
     conv3_2 = standard_unit(conv3_2, stage='32', nb_filter=nb_filter[2])
 
-    up2_3 = Conv2DTranspose(nb_filter[1], 3, stride=2, act = 'relu', name='up23', padding=1,
+    up2_3 = Conv2DTranspose(nb_filter[1], 2, stride=2, act = 'relu', name='up23', padding=1,
                             output_size = conv2_1.shape)(conv3_2)
     conv2_3 = Concat(name='merge23')([up2_3, conv2_1, conv2_2])
     conv2_3 = standard_unit(conv2_3, stage='23', nb_filter=nb_filter[1])
 
-    up1_4 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up14', padding=1,
+    up1_4 = Conv2DTranspose(nb_filter[0], 2, stride=2, act = 'relu', name='up14', padding=1,
                             output_size = conv1_1.shape)(conv2_3)
     conv1_4 = Concat(name='merge14')([up1_4, conv1_1, conv1_2, conv1_3])
     conv1_4 = standard_unit(conv1_4, stage='14', nb_filter=nb_filter[0])
 
     conv5_1 = standard_unit(pool4, stage='51', nb_filter=nb_filter[4])
 
-    up4_2 = Conv2DTranspose(nb_filter[3], 3, stride=2, act = 'relu', name='up42', padding=1,
+    up4_2 = Conv2DTranspose(nb_filter[3], 2, stride=2, act = 'relu', name='up42', padding=1,
                             output_size = conv4_1.shape)(conv5_1)
     conv4_2 = Concat(name='merge42')([up4_2, conv4_1])
     conv4_2 = standard_unit(conv4_2, stage='42', nb_filter=nb_filter[3])
 
-    up3_3 = Conv2DTranspose(nb_filter[2], 3, stride=2, act = 'relu', name='up33', padding=1,
+    up3_3 = Conv2DTranspose(nb_filter[2], 2, stride=2, act = 'relu', name='up33', padding=1,
                             output_size = conv3_1.shape)(conv4_2)
     conv3_3 = Concat(name='merge33')([up3_3, conv3_1, conv3_2])
     conv3_3 = standard_unit(conv3_3, stage='33', nb_filter=nb_filter[2])
 
-    up2_4 = Conv2DTranspose(nb_filter[1], 3, stride=2, act = 'relu', name='up24', padding=1,
+    up2_4 = Conv2DTranspose(nb_filter[1], 2, stride=2, act = 'relu', name='up24', padding=1,
                             output_size = conv2_1.shape)(conv3_3)
     conv2_4 = Concat(name='merge24')([up2_4, conv2_1, conv2_2, conv2_3])
     conv2_4 = standard_unit(conv2_4, stage='24', nb_filter=nb_filter[1])
 
-    up1_5 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up15', padding=1,
+    up1_5 = Conv2DTranspose(nb_filter[0], 2, stride=2, act = 'relu', name='up15', padding=1,
                             output_size = conv1_1.shape)(conv2_4)
     conv1_5 = Concat(name='merge15')([up1_5, conv1_1, conv1_2, conv1_3, conv1_4])
     conv1_5 = standard_unit(conv1_5, stage='15', nb_filter=nb_filter[0])
