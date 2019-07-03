@@ -20,14 +20,16 @@
 
 import os
 import warnings
+import numpy as np
 
 from .sequential import Sequential
 from .blocks import ResBlockBN, ResBlock_Caffe, DenseNetBlock, Bidirectional
 from .caffe_models import (model_vgg16, model_vgg19, model_resnet50,
                            model_resnet101, model_resnet152)
 from .keras_models import model_inceptionv3
-from .layers import (InputLayer, Conv2d, Pooling, Dense, BN, OutputLayer, Detection, Concat, Reshape, Recurrent,
-                     GlobalAveragePooling2D, GroupConv2d, Conv2DTranspose)
+from .layers import (Input, InputLayer, Conv2d, Pooling, Dense, BN, OutputLayer, Detection, Concat, Reshape, Recurrent,
+                     Conv2DTranspose, Segmentation, RegionProposal, ROIPooling, FastRCNN, GroupConv2d, ChannelShuffle,
+                     Res, GlobalAveragePooling2D)
 from .model import Model
 from .utils import random_name, DLPyError
 
@@ -764,7 +766,8 @@ def VGG19(conn, model_table='VGG19', n_classes=1000, n_channels=3, width=224, he
 
 
 def ResNet18_SAS(conn, model_table='RESNET18_SAS', batch_norm_first=True, n_classes=1000, n_channels=3, width=224,
-                 height=224, scale=1, random_flip='none', random_crop='none', offsets=(103.939, 116.779, 123.68)):
+                 height=224, scale=1, random_flip='none', random_crop='none', random_mutation='none',
+                 offsets=(103.939, 116.779, 123.68)):
     '''
     Generates a deep learning model with the ResNet18 architecture.
 
@@ -811,6 +814,10 @@ def ResNet18_SAS(conn, model_table='RESNET18_SAS', batch_norm_first=True, n_clas
         that are larger than those sizes are cropped.
         Valid Values: 'none', 'unique'
         Default: 'none'
+    random_mutation : string, optional
+        Specifies how to apply data augmentations/mutations to the data in the input layer.
+        Valid Values: 'none', 'random'
+        Default: 'none'
     offsets : double or iter-of-doubles, optional
         Specifies an offset for each channel in the input data. The final input
         data is set after applying scaling and subtracting the specified offsets.
@@ -830,7 +837,7 @@ def ResNet18_SAS(conn, model_table='RESNET18_SAS', batch_norm_first=True, n_clas
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, scale=scale, offsets=offsets,
-                         random_flip=random_flip, random_crop=random_crop))
+                         random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation))
 
     # Top layers
     model.add(Conv2d(64, 7, act='identity', include_bias=False, stride=2))
@@ -865,7 +872,7 @@ def ResNet18_SAS(conn, model_table='RESNET18_SAS', batch_norm_first=True, n_clas
 
 
 def ResNet18_Caffe(conn, model_table='RESNET18_CAFFE', batch_norm_first=False, n_classes=1000, n_channels=3, width=224,
-                   height=224, scale=1, random_flip='none', random_crop='none', offsets=None):
+                   height=224, scale=1, random_flip='none', random_crop='none', random_mutation='none', offsets='none'):
     '''
     Generates a deep learning model with the ResNet18 architecture with convolution shortcut.
 
@@ -910,6 +917,10 @@ def ResNet18_Caffe(conn, model_table='RESNET18_CAFFE', batch_norm_first=False, n
         that are larger than those sizes are cropped.
         Valid Values: 'none', 'unique'
         Default: 'none'
+    random_mutation : string, optional
+        Specifies how to apply data augmentations/mutations to the data in the input layer.
+        Valid Values: 'none', 'random'
+        Default: 'none'
     offsets : double or iter-of-doubles, optional
         Specifies an offset for each channel in the input data. The final input
         data is set after applying scaling and subtracting the specified offsets.
@@ -928,7 +939,7 @@ def ResNet18_Caffe(conn, model_table='RESNET18_CAFFE', batch_norm_first=False, n
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, scale=scale, offsets=offsets,
-                         random_flip=random_flip, random_crop=random_crop))
+                         random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation))
     # Top layers
     model.add(Conv2d(64, 7, act='identity', include_bias=False, stride=2))
     model.add(BN(act='relu'))
@@ -1278,6 +1289,10 @@ def ResNet50_Caffe(conn, model_table='RESNET50_CAFFE',  n_classes=1000, n_channe
         Specifies the CAS connection object.
     model_table : string or dict or CAS table, optional
         Specifies the CAS table to store the deep learning model.
+    n_classes : int, optional
+        Specifies the number of classes. If None is assigned, the model will
+        automatically detect the number of classes based on the training set.
+        Default: 1000
     batch_norm_first : bool, optional
         Specifies whether to have batch normalization layer before the
         convolution layer in the residual block.  For a detailed discussion
@@ -1285,10 +1300,6 @@ def ResNet50_Caffe(conn, model_table='RESNET50_CAFFE',  n_classes=1000, n_channe
         mappings in deep residual networks." European Conference on Computer
         Vision. Springer International Publishing, 2016.
         Default: False
-     n_classes : int, optional
-        Specifies the number of classes. If None is assigned, the model will
-        automatically detect the number of classes based on the training set.
-        Default: 1000
     n_channels : int, optional
         Specifies the number of the channels (i.e., depth) of the input layer.
         Default: 3
@@ -2044,6 +2055,546 @@ def ResNet_Wide(conn, model_table='WIDE_RESNET', batch_norm_first=True, number_o
     return model
 
 
+def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, width=224, height=224,
+                random_flip='none', random_crop='none', random_mutation='none',
+                norm_stds = [255 * 0.229, 255 * 0.224, 255 * 0.225], offsets = (255 * 0.485, 255 * 0.456, 255 * 0.406),
+                alpha=1, depth_multiplier=1):
+    '''
+    Generates a deep learning model with the DenseNet architecture.
+
+    Parameters
+    ----------
+    conn : CAS
+        Specifies the CAS connection object.
+    model_table : string or dict or CAS table, optional
+        Specifies the CAS table to store the deep learning model.
+    n_classes : int, optional
+        Specifies the number of classes. If None is assigned, the model will
+        automatically detect the number of classes based on the training set.
+        Default: 1000
+    n_channels : int, optional
+        Specifies the number of the channels (i.e., depth) of the input layer.
+        Default: 3
+    width : int, optional
+        Specifies the width of the input layer.
+        Default: 32
+    height : int, optional
+        Specifies the height of the input layer.
+        Default: 32
+    random_flip : string, optional
+        Specifies how to flip the data in the input layer when image data is
+        used. Approximately half of the input data is subject to flipping.
+        Valid Values: 'h', 'hv', 'v', 'none'
+        Default: 'none'
+    random_crop : string, optional
+        Specifies how to crop the data in the input layer when image data is
+        used. Images are cropped to the values that are specified in the width
+        and height parameters. Only the images with one or both dimensions
+        that are larger than those sizes are cropped.
+        Valid Values: 'none', 'unique'
+        Default: 'none'
+    random_mutation : string, optional
+        Specifies how to apply data augmentations/mutations to the data in the input layer.
+        Valid Values: 'none', 'random'
+        Default: 'NONE'
+    norm_stds : double or iter-of-doubles, optional
+
+        Default: (255 * 0.229, 255 * 0.224, 255 * 0.225)
+    offsets : double or iter-of-doubles, optional
+        Specifies an offset for each channel in the input data. The final input
+        data is set after applying scaling and subtracting the specified offsets.
+        Default: (103.939, 116.779, 123.68)
+    alpha : int, optional
+    depth_multiplier : int, optional
+
+
+    Returns
+    -------
+    :class:`Model`
+
+    References
+    ----------
+    https://arxiv.org/pdf/1605.07146.pdf
+
+    '''
+    def _conv_block(inputs, filters, alpha, kernel = 3, stride = 1):
+        """Adds an initial convolution layer (with batch normalization and relu6).
+        # Arguments
+            inputs: Input tensor of shape `(rows, cols, 3)`
+                (with `channels_last` data format) or
+                (3, rows, cols) (with `channels_first` data format).
+                It should have exactly 3 inputs channels,
+                and width and height should be no smaller than 32.
+                E.g. `(224, 224, 3)` would be one valid value.
+            filters: Integer, the dimensionality of the output space
+                (i.e. the number of output filters in the convolution).
+            alpha: controls the width of the network.
+                - If `alpha` < 1.0, proportionally decreases the number
+                    of filters in each layer.
+                - If `alpha` > 1.0, proportionally increases the number
+                    of filters in each layer.
+                - If `alpha` = 1, default number of filters from the paper
+                     are used at each layer.
+            kernel: An integer or tuple/list of 2 integers, specifying the
+                width and height of the 2D convolution window.
+                Can be a single integer to specify the same value for
+                all spatial dimensions.
+            strides: An integer or tuple/list of 2 integers,
+                specifying the strides of the convolution
+                along the width and height.
+                Can be a single integer to specify the same value for
+                all spatial dimensions.
+                Specifying any stride value != 1 is incompatible with specifying
+                any `dilation_rate` value != 1.
+        # Input shape
+            4D tensor with shape:
+            `(samples, channels, rows, cols)` if data_format='channels_first'
+            or 4D tensor with shape:
+            `(samples, rows, cols, channels)` if data_format='channels_last'.
+        # Output shape
+            4D tensor with shape:
+            `(samples, filters, new_rows, new_cols)`
+            if data_format='channels_first'
+            or 4D tensor with shape:
+            `(samples, new_rows, new_cols, filters)`
+            if data_format='channels_last'.
+            `rows` and `cols` values might have changed due to stride.
+        # Returns
+            Output tensor of block.
+        """
+        filters = int(filters * alpha)
+        x = Conv2d(filters, kernel, act = 'identity', include_bias = False, stride = stride, name = 'conv1')(inputs)
+        x = BN(name = 'conv1_bn', act='relu')(x)
+        return x, filters
+
+    def _depthwise_conv_block(inputs, n_groups, pointwise_conv_filters, alpha,
+                              depth_multiplier = 1, stride = 1, block_id = 1):
+        """Adds a depthwise convolution block.
+        A depthwise convolution block consists of a depthwise conv,
+        batch normalization, relu6, pointwise convolution,
+        batch normalization and relu6 activation.
+        # Arguments
+            inputs: Input tensor of shape `(rows, cols, channels)`
+                (with `channels_last` data format) or
+                (channels, rows, cols) (with `channels_first` data format).
+            pointwise_conv_filters: Integer, the dimensionality of the output space
+                (i.e. the number of output filters in the pointwise convolution).
+            alpha: controls the width of the network.
+                - If `alpha` < 1.0, proportionally decreases the number
+                    of filters in each layer.
+                - If `alpha` > 1.0, proportionally increases the number
+                    of filters in each layer.
+                - If `alpha` = 1, default number of filters from the paper
+                     are used at each layer.
+            depth_multiplier: The number of depthwise convolution output channels
+                for each input channel.
+                The total number of depthwise convolution output
+                channels will be equal to `filters_in * depth_multiplier`.
+            strides: An integer or tuple/list of 2 integers,
+                specifying the strides of the convolution
+                along the width and height.
+                Can be a single integer to specify the same value for
+                all spatial dimensions.
+                Specifying any stride value != 1 is incompatible with specifying
+                any `dilation_rate` value != 1.
+            block_id: Integer, a unique identification designating
+                the block number.
+        # Input shape
+            4D tensor with shape:
+            `(batch, channels, rows, cols)` if data_format='channels_first'
+            or 4D tensor with shape:
+            `(batch, rows, cols, channels)` if data_format='channels_last'.
+        # Output shape
+            4D tensor with shape:
+            `(batch, filters, new_rows, new_cols)`
+            if data_format='channels_first'
+            or 4D tensor with shape:
+            `(batch, new_rows, new_cols, filters)`
+            if data_format='channels_last'.
+            `rows` and `cols` values might have changed due to stride.
+        # Returns
+            Output tensor of block.
+        """
+        pointwise_conv_filters = int(pointwise_conv_filters * alpha)
+
+        x = GroupConv2d(n_groups, n_groups, 3, stride = stride, act = 'identity',
+                        include_bias = False, name = 'conv_dw_%d' % block_id)(inputs)
+        x = BN(name = 'conv_dw_%d_bn' % block_id, act = 'relu')(x)
+
+        x = Conv2d(pointwise_conv_filters, 1, act = 'identity', include_bias = False, stride = 1,
+                   name = 'conv_pw_%d' % block_id)(x)
+        x = BN(name = 'conv_pw_%d_bn' % block_id, act = 'relu')(x)
+        return x, pointwise_conv_filters
+
+    inp = Input(n_channels=n_channels, width=width, height=height, name='data',
+                norm_stds = norm_stds, offsets = offsets,
+                random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation)
+    x, depth = _conv_block(inp, 32, alpha, stride = 2)
+    x, depth = _depthwise_conv_block(x, depth, 64, alpha, depth_multiplier, block_id = 1)
+
+    x, depth = _depthwise_conv_block(x, depth, 128, alpha, depth_multiplier,
+                                     stride = 2, block_id = 2)
+    x, depth = _depthwise_conv_block(x, depth, 128, alpha, depth_multiplier, block_id = 3)
+
+    x, depth = _depthwise_conv_block(x, depth, 256, alpha, depth_multiplier,
+                                     stride = 2, block_id = 4)
+    x, depth = _depthwise_conv_block(x, depth, 256, alpha, depth_multiplier, block_id = 5)
+
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier,
+                                     stride = 2, block_id = 6)
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier, block_id = 7)
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier, block_id = 8)
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier, block_id = 9)
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier, block_id = 10)
+    x, depth = _depthwise_conv_block(x, depth, 512, alpha, depth_multiplier, block_id = 11)
+
+    x, depth = _depthwise_conv_block(x, depth, 1024, alpha, depth_multiplier,
+                                     stride = 2, block_id = 12)
+    x, depth = _depthwise_conv_block(x, depth, 1024, alpha, depth_multiplier, block_id = 13)
+
+    x = GlobalAveragePooling2D(name = "Global_avg_pool")(x)
+    x = OutputLayer(n=n_classes)(x)
+
+    model = Model(conn, inp, x, model_table)
+    model.compile()
+
+    return model
+
+
+def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, width=224, height=224,
+                norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
+                random_flip='none', random_crop='none', random_mutation='none', alpha=1):
+    def _make_divisible(v, divisor, min_value = None):
+        if min_value is None:
+            min_value = divisor
+        new_v = max(min_value, int(v + divisor / 2) // divisor * divisor)
+        # Make sure that round down does not go down by more than 10%.
+        if new_v < 0.9 * v:
+            new_v += divisor
+        return new_v
+
+    def _inverted_res_block(inputs, in_channels, expansion, stride, alpha, filters, block_id):
+        # in_channels = backend.int_shape(inputs)[channel_axis]
+        pointwise_conv_filters = int(filters * alpha)
+        pointwise_filters = _make_divisible(pointwise_conv_filters, 8)
+        x = inputs
+        prefix = 'block_{}_'.format(block_id)
+        n_groups = in_channels
+
+        if block_id:
+            # Expand
+            n_groups = expansion * in_channels
+            x = Conv2d(expansion * in_channels, 1, include_bias = False, act = 'identity',
+                       name = prefix + 'expand')(x)
+            x = BN(name = prefix + 'expand_BN', act = 'identity')(x)
+        else:
+            prefix = 'expanded_conv_'
+
+        # Depthwise
+        x = GroupConv2d(n_groups, n_groups, 3, stride = stride, act = 'identity',
+                        include_bias = False, name = prefix + 'depthwise')(x)
+        x = BN(name = prefix + 'depthwise_BN', act = 'relu')(x)
+
+        # Project
+        x = Conv2d(pointwise_filters, 1, include_bias = False, act = 'identity', name = prefix + 'project')(x)
+        x = BN(name = prefix + 'project_BN', act = 'identity')(x)
+
+        if in_channels == pointwise_filters and stride == 1:
+            return Res(name = prefix + 'add')([inputs, x]), pointwise_filters
+        return x, pointwise_filters
+
+    inp = Input(n_channels = n_channels, width = width, height = height, name = 'data',
+                norm_stds = norm_stds, offsets = offsets,
+                random_flip = random_flip, random_crop = random_crop, random_mutation = random_mutation)
+    first_block_filters = _make_divisible(32 * alpha, 8)
+    x = Conv2d(first_block_filters, 3, stride = 2, include_bias = False, name = 'Conv1', act = 'identity')(inp)
+    x = BN(name = 'bn_Conv1', act='relu')(x)
+
+    x, n_channels = _inverted_res_block(x, first_block_filters, filters = 16, alpha = alpha, stride = 1,
+                                        expansion = 1, block_id = 0)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 24, alpha = alpha, stride = 2,
+                                        expansion = 6, block_id = 1)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 24, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 2)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 32, alpha = alpha, stride = 2,
+                                        expansion = 6, block_id = 3)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 32, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 4)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 32, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 5)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 64, alpha = alpha, stride = 2,
+                                        expansion = 6, block_id = 6)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 64, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 7)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 64, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 8)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 64, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 9)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 96, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 10)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 96, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 11)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 96, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 12)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 160, alpha = alpha, stride = 2,
+                                        expansion = 6, block_id = 13)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 160, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 14)
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 160, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 15)
+
+    x, n_channels = _inverted_res_block(x, n_channels, filters = 320, alpha = alpha, stride = 1,
+                                        expansion = 6, block_id = 16)
+
+    # no alpha applied to last conv as stated in the paper:
+    # if the width multiplier is greater than 1 we
+    # increase the number of output channels
+    if alpha > 1.0:
+        last_block_filters = _make_divisible(1280 * alpha, 8)
+    else:
+        last_block_filters = 1280
+
+    x = Conv2d(last_block_filters, 1, include_bias = False, name = 'Conv_1', act = 'identity')(x)
+    x = BN(name = 'Conv_1_bn', act = 'relu')(x)
+
+    x = GlobalAveragePooling2D(name = "Global_avg_pool")(x)
+    x = OutputLayer(n = n_classes)(x)
+
+    model = Model(conn, inp, x, model_table)
+    model.compile()
+
+    return model
+
+
+def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3, width=224, height=224,
+                 norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
+                 random_flip='none', random_crop='none', random_mutation='none', scale_factor=1.0,
+                 num_shuffle_units = [3, 7, 3], bottleneck_ratio=0.25, groups=3, block_act='identity'):
+
+    def _block(x, channel_map, bottleneck_ratio, repeat = 1, groups = 1, stage = 1):
+        """
+        creates a bottleneck block containing `repeat + 1` shuffle units
+        Parameters
+        ----------
+        x:
+            Input tensor of with `channels_last` data format
+        channel_map: list
+            list containing the number of output channels for a stage
+        repeat: int(1)
+            number of repetitions for a shuffle unit with stride 1
+        groups: int(1)
+            number of groups per channel
+        bottleneck_ratio: float
+            bottleneck ratio implies the ratio of bottleneck channels to output channels.
+            For example, bottleneck ratio = 1 : 4 means the output feature map is 4 times
+            the width of the bottleneck feature map.
+        stage: int(1)
+            stage number
+        Returns
+        -------
+        """
+        x = _shuffle_unit(x, in_channels = channel_map[stage - 2],
+                          out_channels = channel_map[stage - 1], strides = 2,
+                          groups = groups, bottleneck_ratio = bottleneck_ratio,
+                          stage = stage, block = 1)
+
+        for i in range(1, repeat + 1):
+            x = _shuffle_unit(x, in_channels = channel_map[stage - 1],
+                              out_channels = channel_map[stage - 1], strides = 1,
+                              groups = groups, bottleneck_ratio = bottleneck_ratio,
+                              stage = stage, block = (i + 1))
+
+        return x
+
+    def _shuffle_unit(inputs, in_channels, out_channels, groups, bottleneck_ratio, strides = 2, stage = 1, block = 1):
+        """
+        creates a shuffleunit
+        Parameters
+        ----------
+        inputs:
+            Input tensor of with `channels_last` data format
+        in_channels:
+            number of input channels
+        out_channels:
+            number of output channels
+        strides:
+            An integer or tuple/list of 2 integers,
+            specifying the strides of the convolution along the width and height.
+        groups: int(1)
+            number of groups per channel
+        bottleneck_ratio: float
+            bottleneck ratio implies the ratio of bottleneck channels to output channels.
+            For example, bottleneck ratio = 1 : 4 means the output feature map is 4 times
+            the width of the bottleneck feature map.
+        stage: int(1)
+            stage number
+        block: int(1)
+            block number
+        Returns
+        -------
+        """
+
+        prefix = 'stage%d/block%d' % (stage, block)
+
+        # if strides >= 2:
+        # out_channels -= in_channels
+
+        # default: 1/4 of the output channel of a ShuffleNet Unit
+        bottleneck_channels = int(out_channels * bottleneck_ratio)
+        groups = (1 if stage == 2 and block == 1 else groups)
+
+        # x = _group_conv(inputs, in_channels, out_channels = bottleneck_channels,
+        #                 groups = (1 if stage == 2 and block == 1 else groups),
+        #                 name = '%s/1x1_gconv_1' % prefix)
+
+        x = GroupConv2d(bottleneck_channels, n_groups = (1 if stage == 2 and block == 1 else groups), act = 'identity',
+                        width = 1, height = 1, stride = 1, include_bias = False,
+                        name = '%s/1x1_gconv_1' % prefix)(inputs)
+
+        x = BN(act = 'relu', name = '%s/bn_gconv_1' % prefix)(x)
+
+        x = ChannelShuffle(n_groups = groups, name = '%s/channel_shuffle' % prefix)(x)
+        # depthwise convolutioin
+        x = GroupConv2d(x.shape[-1], n_groups = x.shape[-1], width = 3, height = 3, include_bias = False,
+                        stride = strides, act = 'identity',
+                        name = '%s/1x1_dwconv_1' % prefix)(x)
+        x = BN(act = block_act, name = '%s/bn_dwconv_1' % prefix)(x)
+
+        out_channels = out_channels if strides == 1 else out_channels - in_channels
+        x = GroupConv2d(out_channels, n_groups = groups, width = 1, height = 1, stride=1, act = 'identity',
+                        include_bias = False, name = '%s/1x1_gconv_2' % prefix)(x)
+
+        x = BN(act = block_act, name = '%s/bn_gconv_2' % prefix)(x)
+
+        if strides < 2:
+            ret = Res(act = 'relu', name = '%s/add' % prefix)([x, inputs])
+        else:
+            avg = Pooling(width = 3, height = 3, stride = 2, pool = 'mean', name = '%s/avg_pool' % prefix)(inputs)
+            ret = Concat(act = 'relu', name = '%s/concat' % prefix)([x, avg])
+
+        return ret
+
+    out_dim_stage_two = {1: 144, 2: 200, 3: 240, 4: 272, 8: 384}
+    exp = np.insert(np.arange(0, len(num_shuffle_units), dtype = np.float32), 0, 0)
+    out_channels_in_stage = 2 ** exp
+    out_channels_in_stage *= out_dim_stage_two[groups]  # calculate output channels for each stage
+    out_channels_in_stage[0] = 24  # first stage has always 24 output channels
+    out_channels_in_stage *= scale_factor
+    out_channels_in_stage = out_channels_in_stage.astype(int)
+
+    inp = Input(n_channels = n_channels, width = width, height = height, name = 'data',
+                norm_stds = norm_stds, offsets = offsets,
+                random_flip = random_flip, random_crop = random_crop, random_mutation = random_mutation)
+
+    # create shufflenet architecture
+    x = Conv2d(out_channels_in_stage[0], 3, include_bias=False, stride=2, act="identity", name="conv1")(inp)
+    x = BN(act = 'relu', name = 'bn1')(x)
+    x = Pooling(width = 3, height = 3, stride=2, name="maxpool1")(x)
+
+    # create stages containing shufflenet units beginning at stage 2
+    for stage in range(0, len(num_shuffle_units)):
+        repeat = num_shuffle_units[stage]
+        x = _block(x, out_channels_in_stage, repeat=repeat,
+                   bottleneck_ratio=bottleneck_ratio,
+                   groups=groups, stage=stage + 2)
+
+    x = GlobalAveragePooling2D(name="Global_avg_pool")(x)
+    x = OutputLayer(n = n_classes)(x)
+
+    model = Model(conn, inputs=inp, outputs=x, model_table = model_table)
+    model.compile()
+
+    return model
+
+
+def DenseNet_SAS(conn, blocks, model_table='DenseNet', n_classes=1000, n_channels=3, width=224, height=224,
+             norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
+             random_flip='none', random_crop='none', random_mutation='none'):
+
+    def dense_block(x, blocks, name):
+        """A dense block.
+        # Arguments
+            x: input tensor.
+            blocks: integer, the number of building blocks.
+            name: string, block label.
+        # Returns
+            output tensor for the block.
+        """
+        for i in range(blocks):
+            x = conv_block(x, 32, name = name + '_block' + str(i + 1))
+        return x
+
+    def transition_block(x, reduction, name):
+        """A transition block.
+        # Arguments
+            x: input tensor.
+            reduction: float, compression rate at transition layers.
+            name: string, block label.
+        # Returns
+            output tensor for the block.
+        """
+        x = BN(name = name + '_bn', act = 'relu')(x)
+        x = Conv2d(x.shape[2] * reduction, 1, act = 'identity', include_bias = False, name = name + '_conv')(x)
+        x = Pooling(width = 2, height = 2, stride = 2, pool = 'mean', name = name + '_pool')(x)
+        return x
+
+    def conv_block(x, growth_rate, name):
+        """A building block for a dense block.
+        # Arguments
+            x: input tensor.
+            growth_rate: float, growth rate at dense layers.
+            name: string, block label.
+        # Returns
+            Output tensor for the block.
+        """
+        x1 = BN(name = name + '_0_bn', act = 'relu')(x)
+        x1 = Conv2d(4 * growth_rate, 1, act = 'identity', include_bias = False, name = name + '_1_conv')(x1)
+        x1 = BN(name = name + '_1_bn', act = 'relu')(x1)
+        x1 = Conv2d(growth_rate, 3, act = 'identity', include_bias = False, name = name + '_2_conv')(x1)
+        x = Concat(name = name + '_concat')([x, x1])
+        return x
+
+    inp = Input(n_channels = n_channels, width = width, height = height, name = 'data',
+                norm_stds = norm_stds, offsets = offsets,
+                random_flip = random_flip, random_crop = random_crop, random_mutation = random_mutation)
+
+    x = Conv2d(64, 7, stride=2, act = 'identity', include_bias=False, name='conv1/conv')(inp)
+    x = BN(name='conv1/bn', act='relu')(x)
+    x = Pooling(3, stride=2, name='pool1')(x)
+
+    x = dense_block(x, blocks[0], name='conv2')
+    x = transition_block(x, 0.5, name='pool2')
+    x = dense_block(x, blocks[1], name='conv3')
+    x = transition_block(x, 0.5, name='pool3')
+    x = dense_block(x, blocks[2], name='conv4')
+    x = transition_block(x, 0.5, name='pool4')
+    x = dense_block(x, blocks[3], name='conv5')
+
+    x = BN(name='bn', act = 'relu')(x)
+
+    x = GlobalAveragePooling2D(name = "Global_avg_pool")(x)
+    x = OutputLayer(n = n_classes, act='softmax', name='output_layer')(x)
+
+    # Create model.
+    if blocks == [6, 12, 24, 16]:
+        model = Model(conn, inp, x, model_table='densenet121')
+    elif blocks == [6, 12, 32, 32]:
+        model = Model(conn, inp, x, model_table='densenet169')
+    elif blocks == [6, 12, 48, 32]:
+        model = Model(conn, inp, x, model_table='densenet201')
+    else:
+        model = Model(conn, inp, x, model_table=model_table)
+
+    model.compile()
+
+    return model
+
+
 def DenseNet(conn, model_table='DenseNet', n_classes=None, conv_channel=16, growth_rate=12, n_blocks=4,
              n_cells=4, n_channels=3, width=32, height=32, scale=1, random_flip='none', random_crop='none',
              offsets=(85, 111, 139)):
@@ -2100,6 +2651,9 @@ def DenseNet(conn, model_table='DenseNet', n_classes=None, conv_channel=16, grow
         Specifies an offset for each channel in the input data. The final input
         data is set after applying scaling and subtracting the specified offsets.
         Default: (85, 111, 139)
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
 
     Returns
     -------
@@ -2138,7 +2692,7 @@ def DenseNet(conn, model_table='DenseNet', n_classes=None, conv_channel=16, grow
 
 def DenseNet121(conn, model_table='DENSENET121', n_classes=1000, conv_channel=64, growth_rate=32,
                 n_cells=[6, 12, 24, 16], n_channels=3, reduction=0.5, width=224, height=224, scale=1,
-                random_flip='none', random_crop='none', offsets=(103.939, 116.779, 123.68)):
+                random_flip='none', random_crop='none', offsets=(103.939, 116.779, 123.68), norm_stds=None):
     '''
     Generates a deep learning model with the DenseNet121 architecture.
 
@@ -2207,7 +2761,7 @@ def DenseNet121(conn, model_table='DENSENET121', n_classes=1000, conv_channel=64
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, scale=scale,
-                         random_flip=random_flip, offsets=offsets, random_crop=random_crop))
+                         random_flip=random_flip, offsets=offsets, random_crop=random_crop, norm_stds=norm_stds))
     # Top layers
     model.add(Conv2d(conv_channel, width=7, act='identity', include_bias=False, stride=2))
     model.add(BN(act='relu'))
@@ -2249,7 +2803,8 @@ def DenseNet121(conn, model_table='DENSENET121', n_classes=1000, conv_channel=64
 
 
 def Darknet_Reference(conn, model_table='Darknet_Reference', n_classes=1000, act='leaky',
-                      n_channels=3, width=224, height=224, scale=1.0 / 255, random_flip='H', random_crop='UNIQUE'):
+                      n_channels=3, width=224, height=224, scale=1.0 / 255, random_flip='H', random_crop='UNIQUE',
+                      norm_stds=None, offsets=None):
 
     '''
     Generates a deep learning model with the Darknet_Reference architecture.
@@ -2296,6 +2851,12 @@ def Darknet_Reference(conn, model_table='Darknet_Reference', n_classes=1000, act
         that are larger than those sizes are cropped.
         Valid Values: 'none', 'unique'
         Default: 'unique'
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
+    offsets : double or iter-of-doubles, optional
+        Specifies an offset for each channel in the input data. The final input
+        data is set after applying scaling and subtracting the specified offsets.
 
     Returns
     -------
@@ -2305,8 +2866,8 @@ def Darknet_Reference(conn, model_table='Darknet_Reference', n_classes=1000, act
 
     model = Sequential(conn=conn, model_table=model_table)
 
-    model.add(InputLayer(n_channels=n_channels, width=width, height=height, scale=scale,
-                         random_flip=random_flip, random_crop=random_crop))
+    model.add(InputLayer(n_channels=n_channels, width=width, height=height,
+                         random_flip=random_flip, random_crop=random_crop, norm_stds=norm_stds, offsets=offsets))
 
     # conv1 224
     model.add(Conv2d(16, width=3, act='identity', include_bias=False, stride=1))
@@ -2345,7 +2906,7 @@ def Darknet_Reference(conn, model_table='Darknet_Reference', n_classes=1000, act
 
 
 def Darknet(conn, model_table='Darknet', n_classes=1000, act='leaky', n_channels=3, width=224, height=224,
-            scale=1.0 / 255, random_flip='H', random_crop='UNIQUE'):
+            scale=1.0 / 255, random_flip='H', random_crop='UNIQUE', norm_stds=None, offsets=None):
     '''
     Generate a deep learning model with the Darknet architecture.
 
@@ -2394,6 +2955,12 @@ def Darknet(conn, model_table='Darknet', n_classes=1000, act='leaky', n_channels
         that are larger than those sizes are cropped.
         Valid Values: 'none', 'unique'
         Default: 'unique'
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
+    offsets : double or iter-of-doubles, optional
+        Specifies an offset for each channel in the input data. The final input
+        data is set after applying scaling and subtracting the specified offsets.
 
     Returns
     -------
@@ -2405,7 +2972,7 @@ def Darknet(conn, model_table='Darknet', n_classes=1000, act='leaky', n_channels
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height,
                          scale=scale, random_flip=random_flip,
-                         random_crop=random_crop))
+                         random_crop=random_crop, norm_stds=norm_stds, offsets=offsets))
     # conv1 224 416
     model.add(Conv2d(32, width=3, act='identity', include_bias=False, stride=1))
     model.add(BN(act=act))
@@ -2487,7 +3054,7 @@ def YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=416, he
            n_classes=20, predictions_per_grid=5, do_sqrt=True, grid_number=13,
            coord_scale=None, object_scale=None, prediction_not_a_object_scale=None, class_scale=None,
            detection_threshold=None, iou_threshold=None, random_boxes=False, match_anchor_size=None,
-           num_to_force_coord=None):
+           num_to_force_coord=None, norm_stds=None, offsets=None):
     '''
     Generates a deep learning model with the Yolov2 architecture.
 
@@ -2579,6 +3146,12 @@ def YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=416, he
     num_to_force_coord : int, optional
         The number of leading chunk of images in training when the algorithm forces predicted objects
         in each grid to be equal to the anchor box sizes, and located at the grid center
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
+    offsets : double or iter-of-doubles, optional
+        Specifies an offset for each channel in the input data. The final input
+        data is set after applying scaling and subtracting the specified offsets.
 
     Returns
     -------
@@ -2597,7 +3170,7 @@ def YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=416, he
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, random_mutation=random_mutation,
-                         scale=scale))
+                         scale=scale, norm_stds=norm_stds, offsets=offsets))
 
     # conv1 224 416
     model.add(Conv2d(32, width=3, act='identity', include_bias=False, stride=1))
@@ -2681,7 +3254,7 @@ def YoloV2_MultiSize(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, wid
                      n_classes=20, predictions_per_grid=5, do_sqrt=True, grid_number=13,
                      coord_scale=None, object_scale=None, prediction_not_a_object_scale=None, class_scale=None,
                      detection_threshold=None, iou_threshold=None, random_boxes=False, match_anchor_size=None,
-                     num_to_force_coord=None):
+                     num_to_force_coord=None, norm_stds=None, offsets=None):
     '''
     Generates a deep learning model with the Yolov2 architecture.
 
@@ -2777,6 +3350,12 @@ def YoloV2_MultiSize(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, wid
     num_to_force_coord : int, optional
         The number of leading chunk of images in training when the algorithm forces predicted objects
         in each grid to be equal to the anchor box sizes, and located at the grid center
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
+    offsets : double or iter-of-doubles, optional
+        Specifies an offset for each channel in the input data. The final input
+        data is set after applying scaling and subtracting the specified offsets.
 
     Returns
     -------
@@ -2791,7 +3370,7 @@ def YoloV2_MultiSize(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, wid
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, random_mutation=random_mutation,
-                         scale=scale))
+                         scale=scale, norm_stds=norm_stds, offsets=offsets))
 
     # conv1 224 416
     model.add(Conv2d(32, width=3, act='identity', include_bias=False, stride=1))
@@ -2898,7 +3477,7 @@ def Tiny_YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=41
                 n_classes=20, predictions_per_grid=5, do_sqrt=True, grid_number=13,
                 coord_scale=None, object_scale=None, prediction_not_a_object_scale=None, class_scale=None,
                 detection_threshold=None, iou_threshold=None, random_boxes=False, match_anchor_size=None,
-                num_to_force_coord=None):
+                num_to_force_coord=None, norm_stds=None, offsets=None):
     '''
     Generate a deep learning model with the Tiny Yolov2 architecture.
 
@@ -2994,6 +3573,12 @@ def Tiny_YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=41
     num_to_force_coord : int, optional
         The number of leading chunk of images in training when the algorithm forces predicted objects
         in each grid to be equal to the anchor box sizes, and located at the grid center
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
+    offsets : double or iter-of-doubles, optional
+        Specifies an offset for each channel in the input data. The final input
+        data is set after applying scaling and subtracting the specified offsets.
 
     Returns
     -------
@@ -3008,7 +3593,7 @@ def Tiny_YoloV2(conn, anchors, model_table='Tiny-Yolov2', n_channels=3, width=41
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, random_mutation=random_mutation,
-                         scale=scale))
+                         scale=scale, norm_stds=norm_stds, offsets=offsets))
     # conv1 416 448
     model.add(Conv2d(n_filters=16, width=3, act='identity', include_bias=False, stride=1))
     model.add(BN(act=act))
@@ -3059,7 +3644,7 @@ def YoloV1(conn, model_table='Yolov1', n_channels=3, width=448, height=448, scal
            coord_type='YOLO', max_label_per_image=30, max_boxes=30,
            n_classes=20, predictions_per_grid=2, do_sqrt=True, grid_number=7,
            coord_scale=None, object_scale=None, prediction_not_a_object_scale=None, class_scale=None,
-           detection_threshold=None, iou_threshold=None, random_boxes=False):
+           detection_threshold=None, iou_threshold=None, random_boxes=False, norm_stds=None, offsets=None):
     '''
     Generates a deep learning model with the Yolo V1 architecture.
 
@@ -3149,6 +3734,12 @@ def YoloV1(conn, model_table='Yolov1', n_channels=3, width=448, height=448, scal
     random_boxes : bool, optional
         Randomizing boxes when loading the bounding box information. 
         Default: False
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
+    offsets : double or iter-of-doubles, optional
+        Specifies an offset for each channel in the input data. The final input
+        data is set after applying scaling and subtracting the specified offsets.
 
     Returns
     -------
@@ -3163,7 +3754,7 @@ def YoloV1(conn, model_table='Yolov1', n_channels=3, width=448, height=448, scal
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, random_mutation=random_mutation,
-                         scale=scale))
+                         scale=scale, norm_stds=norm_stds, offsets=offsets))
     # conv1 448
     model.add(Conv2d(32, width=3, act=act, include_bias=False, stride=1))
     model.add(Pooling(width=2, height=2, stride=2, pool='max'))
@@ -3235,7 +3826,7 @@ def Tiny_YoloV1(conn, model_table='Tiny-Yolov1', n_channels=3, width=448, height
                 coord_type='YOLO', max_label_per_image=30, max_boxes=30,
                 n_classes=20, predictions_per_grid=2, do_sqrt=True, grid_number=7,
                 coord_scale=None, object_scale=None, prediction_not_a_object_scale=None, class_scale=None,
-                detection_threshold=None, iou_threshold=None, random_boxes=False):
+                detection_threshold=None, iou_threshold=None, random_boxes=False, norm_stds=None, offsets=None):
     '''
     Generates a deep learning model with the Tiny Yolov1 architecture.
 
@@ -3328,6 +3919,12 @@ def Tiny_YoloV1(conn, model_table='Tiny-Yolov1', n_channels=3, width=448, height
     random_boxes : bool, optional
         Randomizing boxes when loading the bounding box information. 
         Default: False
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
+    offsets : double or iter-of-doubles, optional
+        Specifies an offset for each channel in the input data. The final input
+        data is set after applying scaling and subtracting the specified offsets.
 
     Returns
     -------
@@ -3342,7 +3939,7 @@ def Tiny_YoloV1(conn, model_table='Tiny-Yolov1', n_channels=3, width=448, height
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, random_mutation=random_mutation,
-                         scale=scale))
+                         scale=scale, norm_stds=norm_stds, offsets=offsets))
 
     model.add(Conv2d(16, width=3, act=act, include_bias=False, stride=1))
     model.add(Pooling(width=2, height=2, stride=2, pool='max'))
@@ -3384,7 +3981,7 @@ def Tiny_YoloV1(conn, model_table='Tiny-Yolov1', n_channels=3, width=448, height
 def InceptionV3(conn, model_table='InceptionV3',
                 n_classes=1000, n_channels=3, width=299, height=299, scale=1,
                 random_flip='none', random_crop='none', offsets=(103.939, 116.779, 123.68),
-                pre_trained_weights=False, pre_trained_weights_file=None, include_top=False):
+                pre_trained_weights=False, pre_trained_weights_file=None, include_top=False, norm_stds=None):
     '''
     Generates a deep learning model with the Inceptionv3 architecture with batch normalization layers.
 
@@ -3437,6 +4034,9 @@ def InceptionV3(conn, model_table='InceptionV3',
         Specifies whether to include pre-trained weights of the top layers,
         i.e. the FC layers
         Default: False
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
 
     Returns
     -------
@@ -3458,7 +4058,7 @@ def InceptionV3(conn, model_table='InceptionV3',
 
         model.add(InputLayer(n_channels=n_channels, width=width,
                              height=height, scale=scale, offsets=offsets,
-                             random_flip=random_flip, random_crop=random_crop))
+                             random_flip=random_flip, random_crop=random_crop, norm_stds=norm_stds))
 
         # 299 x 299 x 3
         model.add(Conv2d(n_filters=32, width=3, height=3, stride=2,
@@ -4001,3 +4601,211 @@ def InceptionV3(conn, model_table='InceptionV3',
             model = Model.from_table(conn.CASTable(model_table))
 
             return model
+
+
+def UNet(conn, model_table='UNet', n_channels=3, width=512, height=512, scale=1.0 / 255, n_classes = 2, init = None):
+    inputs = Input(n_channels = n_channels, width = width, height = height, scale = scale, name = 'InputLayer_1')
+    conv1 = Conv2d(64, 3, act = 'relu', init = init)(inputs)
+    conv1 = Conv2d(64, 3, act = 'relu', init = init)(conv1)
+    pool1 = Pooling(2)(conv1)
+
+    conv2 = Conv2d(128, 3, act = 'relu', init = init)(pool1)
+    conv2 = Conv2d(128, 3, act = 'relu', init = init)(conv2)
+    pool2 = Pooling(2)(conv2)
+
+    conv3 = Conv2d(256, 3, act = 'relu', init = init)(pool2)
+    conv3 = Conv2d(256, 3, act = 'relu', init = init)(conv3)
+    pool3 = Pooling(2)(conv3)
+
+    conv4 = Conv2d(512, 3, act = 'relu', init = init)(pool3)
+    conv4 = Conv2d(512, 3, act = 'relu', init = init)(conv4)
+    pool4 = Pooling(2)(conv4)
+
+    conv5 = Conv2d(1024, 3, act = 'relu', init = init)(pool4)
+    conv5 = Conv2d(1024, 3, act = 'relu', init = init)(conv5)
+
+    tconv6 = Conv2DTranspose(512, 3, stride = 2, act = 'relu', padding = 1, output_size = conv4.shape,
+                             init = init)(conv5)  # 64
+    merge6 = Concat()([conv4, tconv6])
+    conv6 = Conv2d(512, 3, act = 'relu', init = init)(merge6)
+    conv6 = Conv2d(512, 3, act = 'relu', init = init)(conv6)
+
+    tconv7 = Conv2DTranspose(256, 3, stride = 2, act = 'relu', padding = 1, output_size = conv3.shape,
+                             init = init)(conv6)  # 128
+    merge7 = Concat()([conv3, tconv7])
+    conv7 = Conv2d(256, 3, act = 'relu', init = init)(merge7)
+    conv7 = Conv2d(256, 3, act = 'relu', init = init)(conv7)
+
+    tconv8 = Conv2DTranspose(128, stride = 2, act = 'relu', padding = 1, output_size = conv2.shape,
+                             init = init)(conv7)  # 256
+    merge8 = Concat()([conv2, tconv8])
+    conv8 = Conv2d(128, 3, act = 'relu', init = init)(merge8)
+    conv8 = Conv2d(128, 3, act = 'relu', init = init)(conv8)
+
+    tconv9 = Conv2DTranspose(64, stride = 2, act = 'relu', padding = 1, output_size = conv1.shape,
+                             init = init)(conv8)  # 512
+    merge9 = Concat()([conv1, tconv9])
+    conv9 = Conv2d(64, 3, act = 'relu', init = init)(merge9)
+    conv9 = Conv2d(64, 3, act = 'relu', init = init)(conv9)
+
+    conv9 = Conv2d(n_classes, 3, act = 'identity', init = init)(conv9)
+
+    seg1 = Segmentation(name = 'Segmentation_1')(conv9)
+    model = Model(conn, inputs = inputs, outputs = seg1, model_table = model_table)
+    model.compile()
+    return model
+
+
+def Nest_Net(conn, model_table='Nest_Net', n_channels=1, width=512, height=512, scale=1.0 / 255, n_classes = 2, deep_supervision=True):
+    def standard_unit(input_tensor, stage, nb_filter, kernel_size = 3):
+        x = Conv2d(nb_filter, kernel_size, act = 'relu', name = 'conv' + stage + '_1')(input_tensor)
+        x = Conv2d(nb_filter, kernel_size, act = 'relu', name = 'conv' + stage + '_2')(x)
+        return x
+
+    nb_filter = [32, 64, 128, 256, 512]
+
+    inputs = Input(n_channels = n_channels, width = width, height = height, scale = scale, name = 'InputLayer_1')
+
+    conv1_1 = standard_unit(inputs, stage='11', nb_filter=nb_filter[0])
+    pool1 = Pooling(width = 2, height = 2, stride=2, name='pool1')(conv1_1)
+
+    conv2_1 = standard_unit(pool1, stage='21', nb_filter=nb_filter[1])
+    pool2 = Pooling(width = 2, height = 2, stride=2, name='pool2')(conv2_1)
+
+    up1_2 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up12', padding=1,
+                            output_size = conv1_1.shape)(conv2_1)
+    conv1_2 = Concat(name='merge12')([up1_2, conv1_1])
+    conv1_2 = standard_unit(conv1_2, stage='12', nb_filter=nb_filter[0])
+
+    conv3_1 = standard_unit(pool2, stage='31', nb_filter=nb_filter[2])
+    pool3 = Pooling(width = 2, height = 2, stride=2, name='pool3')(conv3_1)
+
+    up2_2 = Conv2DTranspose(nb_filter[1], 3, stride=2, act = 'relu', name='up22', padding=1,
+                            output_size = conv2_1.shape)(conv3_1)
+    conv2_2 = Concat(name='merge22')([up2_2, conv2_1])
+    conv2_2 = standard_unit(conv2_2, stage='22', nb_filter=nb_filter[1])
+
+    up1_3 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up13', padding=1,
+                            output_size = conv1_1.shape)(conv2_2)
+    conv1_3 = Concat(name='merge13')([up1_3, conv1_1, conv1_2])
+    conv1_3 = standard_unit(conv1_3, stage='13', nb_filter=nb_filter[0])
+
+    conv4_1 = standard_unit(pool3, stage='41', nb_filter=nb_filter[3])
+    pool4 = Pooling(width = 2, height = 2, stride=2, name='pool4')(conv4_1)
+
+    up3_2 = Conv2DTranspose(nb_filter[2], 3, stride=2, act = 'relu', name='up32', padding=1,
+                            output_size = conv3_1.shape)(conv4_1)
+    conv3_2 = Concat(name='merge32')([up3_2, conv3_1])
+    conv3_2 = standard_unit(conv3_2, stage='32', nb_filter=nb_filter[2])
+
+    up2_3 = Conv2DTranspose(nb_filter[1], 3, stride=2, act = 'relu', name='up23', padding=1,
+                            output_size = conv2_1.shape)(conv3_2)
+    conv2_3 = Concat(name='merge23')([up2_3, conv2_1, conv2_2])
+    conv2_3 = standard_unit(conv2_3, stage='23', nb_filter=nb_filter[1])
+
+    up1_4 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up14', padding=1,
+                            output_size = conv1_1.shape)(conv2_3)
+    conv1_4 = Concat(name='merge14')([up1_4, conv1_1, conv1_2, conv1_3])
+    conv1_4 = standard_unit(conv1_4, stage='14', nb_filter=nb_filter[0])
+
+    conv5_1 = standard_unit(pool4, stage='51', nb_filter=nb_filter[4])
+
+    up4_2 = Conv2DTranspose(nb_filter[3], 3, stride=2, act = 'relu', name='up42', padding=1,
+                            output_size = conv4_1.shape)(conv5_1)
+    conv4_2 = Concat(name='merge42')([up4_2, conv4_1])
+    conv4_2 = standard_unit(conv4_2, stage='42', nb_filter=nb_filter[3])
+
+    up3_3 = Conv2DTranspose(nb_filter[2], 3, stride=2, act = 'relu', name='up33', padding=1,
+                            output_size = conv3_1.shape)(conv4_2)
+    conv3_3 = Concat(name='merge33')([up3_3, conv3_1, conv3_2])
+    conv3_3 = standard_unit(conv3_3, stage='33', nb_filter=nb_filter[2])
+
+    up2_4 = Conv2DTranspose(nb_filter[1], 3, stride=2, act = 'relu', name='up24', padding=1,
+                            output_size = conv2_1.shape)(conv3_3)
+    conv2_4 = Concat(name='merge24')([up2_4, conv2_1, conv2_2, conv2_3])
+    conv2_4 = standard_unit(conv2_4, stage='24', nb_filter=nb_filter[1])
+
+    up1_5 = Conv2DTranspose(nb_filter[0], 3, stride=2, act = 'relu', name='up15', padding=1,
+                            output_size = conv1_1.shape)(conv2_4)
+    conv1_5 = Concat(name='merge15')([up1_5, conv1_1, conv1_2, conv1_3, conv1_4])
+    conv1_5 = standard_unit(conv1_5, stage='15', nb_filter=nb_filter[0])
+
+    nestnet_output_1 = Conv2d(n_classes, 1, act='identity', name='output_1')(conv1_2)
+    nestnet_output_2 = Conv2d(n_classes, 1, act='identity', name='output_2')(conv1_3)
+    nestnet_output_3 = Conv2d(n_classes, 1, act='identity', name='output_3')(conv1_4)
+    nestnet_output_4 = Conv2d(n_classes, 1, act='identity', name='output_4')(conv1_5)
+
+    seg1 = Segmentation(name = 'Segmentation_1')(nestnet_output_1)
+    seg2 = Segmentation(name = 'Segmentation_2')(nestnet_output_2)
+    seg3 = Segmentation(name = 'Segmentation_3')(nestnet_output_3)
+    seg4 = Segmentation(name = 'Segmentation_4')(nestnet_output_4)
+
+    if deep_supervision:
+        model = Model(conn, inputs=inputs, outputs=[seg1, seg2, seg3, seg4], model_table = model_table)
+    else:
+        model = Model(conn, inputs=inputs, outputs=[seg4], model_table = model_table)
+
+    model.compile()
+
+    return model
+
+
+def Faster_RCNN(conn, model_table='Faster_RCNN', n_channels=3, width=1000, height=496, scale=1,
+                offsets=[102.9801,115.9465,122.7717], random_mutation = 'none',
+                n_classes=20, anchor_num_to_sample = 256, anchor_scale = [8, 16, 32], anchor_ratio = [0.5, 1, 2],
+                base_anchor_size = 16, coord_type = 'coco', max_label_per_image = 200, proposed_roi_num_train = 2000,
+                proposed_roi_num_score = 300, roi_train_sample_num = 128,
+                roi_pooling_width = 7, roi_pooling_height = 7,
+                nms_iou_threshold = 0.3, detection_threshold = 0.5, max_objec_num = 50):
+    num_anchors = len(anchor_ratio) * len(anchor_scale)
+    inp = Input(n_channels = n_channels, width = width, height = height, scale = scale, offsets = offsets,
+                random_mutation = random_mutation, name='data')
+
+    conv1_1 = Conv2d(n_filters = 64, width = 3, height = 3, stride = 1, name='conv1_1')(inp)
+    conv1_2 = Conv2d(n_filters = 64, width = 3, height = 3, stride = 1, name='conv1_2')(conv1_1)
+    pool1 = Pooling(width = 2, height = 2, stride = 2, pool = 'max', name='pool1')(conv1_2)
+
+    conv2_1 = Conv2d(n_filters = 128, width = 3, height = 3, stride = 1, name = 'conv2_1')(pool1)
+    conv2_2 = Conv2d(n_filters = 128, width = 3, height = 3, stride = 1, name = 'conv2_2')(conv2_1)
+    pool2 = Pooling(width = 2, height = 2, stride = 2, pool = 'max')(conv2_2)
+
+    conv3_1 = Conv2d(n_filters = 256, width = 3, height = 3, stride = 1, name = 'conv3_1')(pool2)
+    conv3_2 = Conv2d(n_filters = 256, width = 3, height = 3, stride = 1, name = 'conv3_2')(conv3_1)
+    conv3_3 = Conv2d(n_filters = 256, width = 3, height = 3, stride = 1, name = 'conv3_3')(conv3_2)
+    pool3 = Pooling(width = 2, height = 2, stride = 2, pool = 'max')(conv3_3)
+
+    conv4_1 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv4_1')(pool3)
+    conv4_2 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv4_2')(conv4_1)
+    conv4_3 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv4_3')(conv4_2)
+    pool4 = Pooling(width = 2, height = 2, stride = 2, pool = 'max')(conv4_3)
+
+    conv5_1 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv5_1')(pool4)
+    conv5_2 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv5_2')(conv5_1)
+    conv5_3 = Conv2d(n_filters = 512, width = 3, height = 3, stride = 1, name = 'conv5_3')(conv5_2)
+
+    rpn_conv = Conv2d(width = 3, n_filters = 512, name = 'rpn_conv_3x3')(conv5_3)
+    rpn_score = Conv2d(act = 'identity', width = 1, n_filters = ((1 + 1 + 4) * num_anchors),
+                       name = 'rpn_score')(rpn_conv)
+
+    rp1 = RegionProposal(max_label_per_image = max_label_per_image, base_anchor_size = base_anchor_size,
+                         coord_type = coord_type, name = 'rois', anchor_num_to_sample = anchor_num_to_sample,
+                         anchor_scale = anchor_scale, anchor_ratio = anchor_ratio,
+                         proposed_roi_num_train = proposed_roi_num_train,
+                         proposed_roi_num_score = proposed_roi_num_score,
+                         roi_train_sample_num = roi_train_sample_num
+                         )(rpn_score)
+    roipool1 = ROIPooling(output_height=roi_pooling_height, output_width=roi_pooling_width,
+                          spatial_scale=conv5_3.shape[0]/width,
+                          name = 'roi_pooling')([conv5_3, rp1])
+
+    fc6 = Dense(n = 4096, act = 'relu', name = 'fc6')(roipool1)
+    fc7 = Dense(n = 4096, act = 'relu', name = 'fc7')(fc6)
+    cls1 = Dense(n = n_classes+1, act = 'identity', name = 'cls_score')(fc7)
+    reg1 = Dense(n = (n_classes+1)*4, act = 'identity', name = 'bbox_pred')(fc7)
+    fr1 = FastRCNN(nms_iou_threshold = nms_iou_threshold, max_label_per_image = max_label_per_image,
+                   max_object_num = max_objec_num,  detection_threshold = detection_threshold,
+                   class_number = n_classes, name = 'fastrcnn')([cls1, reg1, rp1])
+    faster_rcnn = Model(conn, inp, fr1, model_table = model_table)
+    faster_rcnn.compile()
+    return faster_rcnn
+
