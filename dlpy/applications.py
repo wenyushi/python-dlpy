@@ -4831,12 +4831,100 @@ def Nest_Net(conn, model_table='Nest_Net', n_channels=1, width=512, height=512, 
 
 
 def Faster_RCNN(conn, model_table='Faster_RCNN', n_channels=3, width=1000, height=496, scale=1,
-                norm_stds=None, offsets=[102.9801,115.9465,122.7717], random_mutation = 'none',
-                n_classes=20, anchor_num_to_sample = 256, anchor_scale = [8, 16, 32], anchor_ratio = [0.5, 1, 2],
+                norm_stds=None, offsets=(102.9801,115.9465,122.7717), random_mutation = 'none',
+                n_classes=20, anchor_num_to_sample = 256, anchor_ratio = [0.5, 1, 2], anchor_scale = [8, 16, 32],
                 base_anchor_size = 16, coord_type = 'coco', max_label_per_image = 200, proposed_roi_num_train = 2000,
-                proposed_roi_num_score = 300, roi_train_sample_num = 128,
-                roi_pooling_width = 7, roi_pooling_height = 7,
-                nms_iou_threshold = 0.3, detection_threshold = 0.5, max_objec_num = 50):
+                proposed_roi_num_score = 300, roi_train_sample_num = 128, roi_pooling_height = 7, roi_pooling_width = 7,
+                nms_iou_threshold = 0.3, detection_threshold = 0.5, max_object_num = 50):
+    '''
+    Generates a deep learning model with the faster RCNN architecture.
+
+    Parameters
+    ----------
+    conn : CAS
+        Specifies the connection of the CAS connection.
+    model_table : string, optional
+        Specifies the name of CAS table to store the model.
+    n_channels : int, optional
+        Specifies the number of the channels (i.e., depth) of the input layer.
+        Default: 3
+    width : int, optional
+        Specifies the width of the input layer.
+        Default: 1000
+    height : int, optional
+        Specifies the height of the input layer.
+        Default: 496
+    scale : double, optional
+        Specifies a scaling factor to be applied to each pixel intensity values.
+        Default: 1
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
+    offsets : double or iter-of-doubles, optional
+        Specifies an offset for each channel in the input data. The final input
+        data is set after applying scaling and subtracting the specified offsets.
+    random_mutation : string, optional
+        Specifies how to apply data augmentations/mutations to the data in the
+        input layer.
+        Valid Values: 'none', 'random'
+        Default: 'NONE'
+    n_classes : int, optional
+        Specifies the number of classes. If None is assigned, the model will
+        automatically detect the number of classes based on the training set.
+        Default: 20
+    anchor_num_to_sample : int, optional
+        Specifies the number of anchors to sample for training the region proposal network
+        Default: 256
+    anchor_ratio : iter-of-float
+        Specifies the anchor height and width ratios (h/w) used.
+    anchor_scale : iter-of-float
+        Specifies the anchor scales used based on base_anchor_size
+    base_anchor_size : int, optional
+        Specifies the basic anchor size in width and height (in pixels) in the original input image dimension
+        Default: 16
+    coord_type : int, optional
+        Specifies the coordinates format type in the input label and detection result.
+        Valid Values: RECT, COCO, YOLO
+        Default: COCO
+    proposed_roi_num_score: int, optional
+        Specifies the number of ROI (Region of Interest) to propose in the scoring phase
+        Default: 300
+    proposed_roi_num_train: int, optional
+        Specifies the number of ROI (Region of Interest) to propose used for RPN training, and also the pool to
+        sample from for FastRCNN Training in the training phase
+        Default: 2000
+    roi_train_sample_num: int, optional
+        Specifies the number of ROIs(Regions of Interests) to sample after NMS(Non-maximum Suppression)
+        is performed in the training phase.
+        Default: 128
+    roi_pooling_height : int, optional
+        Specifies the output height of the region pooling layer.
+        Default: 7
+    roi_pooling_width : int, optional
+        Specifies the output width of the region pooling layer.
+        Default: 7
+    max_label_per_image : int, optional
+        Specifies the maximum number of labels per image in the training.
+        Default: 200
+    nms_iou_threshold: float, optional
+        Specifies the IOU threshold of maximum suppression in object detection
+        Default: 0.3
+    detection_threshold : float, optional
+        Specifies the threshold for object detection.
+        Default: 0.5
+    max_object_num: int, optional
+        Specifies the maximum number of object to detect
+        Default: 50
+
+    Returns
+    -------
+    :class:`Sequential`
+
+    References
+    ----------
+    https://arxiv.org/abs/1506.01497
+
+    '''
     num_anchors = len(anchor_ratio) * len(anchor_scale)
     parameters = locals()
     input_parameters = _get_layer_options(input_layer_options, parameters)

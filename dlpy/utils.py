@@ -23,6 +23,7 @@ import os
 import platform
 import random
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import numpy as np
 import pandas as pd
 import re
@@ -1442,6 +1443,42 @@ def display_object_detections(conn, table, coord_type, max_objects=10,
 
     with sw.option_context(print_messages=False):
         conn.table.droptable(det_label_image_table)
+
+
+def plot_anchors(base_anchor_size, anchor_scale, anchor_ratio, image_size, figsize = (10, 10)):
+    color_map = ['b', 'g', 'r', 'c', 'm', 'y']
+    img_height = image_size[0]
+    img_width = image_size[1]
+    anchors = []
+    max_anchor_height = image_size[0]
+    max_anchor_width = image_size[1]
+
+    for ratio in anchor_ratio:
+        for scale in anchor_scale:
+            len_size = base_anchor_size * scale
+            area = len_size * len_size
+            height = math.sqrt(area * ratio)
+            width = height / ratio
+            anchors.append((height, width))
+    # find max height, width
+    for an in anchors:
+        max_anchor_height = max(max_anchor_height, an[0])
+        max_anchor_width = max(max_anchor_width, an[1])
+    fig, ax = plt.subplots(1, figsize = figsize)
+    plt.xticks([]), plt.yticks([])
+    background = np.tile((255, 255, 255), (int(max_anchor_height), int(max_anchor_width), 1))
+    image_region = (int((max_anchor_height - img_height) / 2), int((max_anchor_height + img_height) / 2),
+                    int((max_anchor_width - img_width) / 2), int((max_anchor_width + img_width) / 2))
+    background[image_region[0]: image_region[1], image_region[2]: image_region[3], :] = np.array((244, 203, 66))
+    ax.imshow(background)
+
+    for i, anchor in enumerate(anchors):
+        centric_x = (max_anchor_width - anchor[1]) / 2  # x
+        centric_y = (max_anchor_height - anchor[0]) / 2  # y
+        color = color_map[i % len(anchor_scale)]
+        rect = patches.Rectangle((centric_x, centric_y), anchor[1], anchor[0], linewidth = 2,
+                                 edgecolor = color, facecolor = 'none')
+        ax.add_patch(rect)
 
 
 def get_mapping_dict():
