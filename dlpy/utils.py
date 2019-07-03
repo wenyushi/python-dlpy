@@ -1445,7 +1445,25 @@ def display_object_detections(conn, table, coord_type, max_objects=10,
         conn.table.droptable(det_label_image_table)
 
 
-def plot_anchors(base_anchor_size, anchor_scale, anchor_ratio, image_size, figsize = (10, 10)):
+def plot_anchors(base_anchor_size, anchor_scale, anchor_ratio, image_size, fig_size=(10, 10)):
+    '''
+    Plot proposed anchor boxes in Region Proposal Layer
+
+    Parameters
+    ----------
+    base_anchor_size : int, optional
+        Specifies the basic anchor size in width and height (in pixels) in the original input image dimension
+        Default: 16
+    anchor_ratio : iter-of-float
+        Specifies the anchor height and width ratios (h/w) used.
+    anchor_scale : iter-of-float
+        Specifies the anchor scales used based on base_anchor_size.
+    image_size : iter-of-int
+        Specifies the shape of input images.
+    fig_size : int, optional
+        Specifies the size of figure.
+
+    '''
     color_map = ['b', 'g', 'r', 'c', 'm', 'y']
     img_height = image_size[0]
     img_width = image_size[1]
@@ -1464,7 +1482,7 @@ def plot_anchors(base_anchor_size, anchor_scale, anchor_ratio, image_size, figsi
     for an in anchors:
         max_anchor_height = max(max_anchor_height, an[0])
         max_anchor_width = max(max_anchor_width, an[1])
-    fig, ax = plt.subplots(1, figsize = figsize)
+    fig, ax = plt.subplots(1, figsize = fig_size)
     plt.xticks([]), plt.yticks([])
     background = np.tile((255, 255, 255), (int(max_anchor_height), int(max_anchor_width), 1))
     image_region = (int((max_anchor_height - img_height) / 2), int((max_anchor_height + img_height) / 2),
