@@ -21,6 +21,7 @@
 import os
 import warnings
 import numpy as np
+import six
 
 from .sequential import Sequential
 from .blocks import ResBlockBN, ResBlock_Caffe, DenseNetBlock, Bidirectional
@@ -32,6 +33,20 @@ from .layers import (Input, InputLayer, Conv2d, Pooling, Dense, BN, OutputLayer,
                      Res, GlobalAveragePooling2D)
 from .model import Model
 from .utils import random_name, DLPyError
+
+input_layer_options = ['n_channels', 'width', 'height', 'nominals', 'std', 'scale', 'offsets',
+                       'dropout', 'random_flip', 'random_crop', 'random_mutation', 'norm_stds']
+rpn_layer_options = ['anchor_ratio', 'anchor_scale', 'anchor_num_to_sample', 'base_anchor_size',
+                     'coord_type', 'do_RPN_only', 'max_label_per_image', 'proposed_roi_num_score',
+                     'proposed_roi_num_train', 'roi_train_sample_num']
+fast_rcnn_options = ['detection_threshold', 'max_label_per_image', 'max_object_num', 'nms_iou_threshold']
+
+def _get_layer_options(layer_options, local_options):
+    layer_options_dict = {}
+    for key, value in six.iteritems(local_options):
+        if key in layer_options:
+            layer_options_dict[key] = value
+    return layer_options_dict
 
 
 def TextClassification(conn, model_table='text_classifier', neurons=10, n_blocks=3, rnn_type='gru'):
@@ -1944,7 +1959,7 @@ def ResNet152_Caffe(conn, model_table='RESNET152_CAFFE',  n_classes=1000, n_chan
 
 def ResNet_Wide(conn, model_table='WIDE_RESNET', batch_norm_first=True, number_of_blocks=1, k=4, n_classes=None,
                 n_channels=3, width=32, height=32, scale=1, random_flip='none', random_crop='none',
-                offsets=(103.939, 116.779, 123.68)):
+                offsets=(103.939, 116.779, 123.68), norm_stds=None):
     '''
     Generate a deep learning model with Wide ResNet architecture.
 
@@ -2005,6 +2020,10 @@ def ResNet_Wide(conn, model_table='WIDE_RESNET', batch_norm_first=True, number_o
         Specifies an offset for each channel in the input data. The final input
         data is set after applying scaling and subtracting the specified offsets.
         Default: (103.939, 116.779, 123.68)
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
+        Default: None
 
     Returns
     -------
@@ -2022,7 +2041,7 @@ def ResNet_Wide(conn, model_table='WIDE_RESNET', batch_norm_first=True, number_o
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, scale=scale, offsets=offsets,
-                         random_flip=random_flip, random_crop=random_crop))
+                         random_flip=random_flip, random_crop=random_crop, norm_stds=norm_stds))
     # Top layers
     model.add(Conv2d(in_filters, 3, act='identity', include_bias=False, stride=1))
     model.add(BN(act='relu'))
@@ -2057,10 +2076,10 @@ def ResNet_Wide(conn, model_table='WIDE_RESNET', batch_norm_first=True, number_o
 
 def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, width=224, height=224,
                 random_flip='none', random_crop='none', random_mutation='none',
-                norm_stds = [255 * 0.229, 255 * 0.224, 255 * 0.225], offsets = (255 * 0.485, 255 * 0.456, 255 * 0.406),
+                norm_stds=(255 * 0.229, 255 * 0.224, 255 * 0.225), offsets=(255 * 0.485, 255 * 0.456, 255 * 0.406),
                 alpha=1, depth_multiplier=1):
     '''
-    Generates a deep learning model with the DenseNet architecture.
+    Generates a deep learning model with the MobileNetV1 architecture.
 
     Parameters
     ----------
@@ -2098,8 +2117,8 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
         Valid Values: 'none', 'random'
         Default: 'NONE'
     norm_stds : double or iter-of-doubles, optional
-
-        Default: (255 * 0.229, 255 * 0.224, 255 * 0.225)
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
     offsets : double or iter-of-doubles, optional
         Specifies an offset for each channel in the input data. The final input
         data is set after applying scaling and subtracting the specified offsets.
@@ -2226,9 +2245,9 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
         x = BN(name = 'conv_pw_%d_bn' % block_id, act = 'relu')(x)
         return x, pointwise_conv_filters
 
-    inp = Input(n_channels=n_channels, width=width, height=height, name='data',
-                norm_stds = norm_stds, offsets = offsets,
-                random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation)
+    parameters = locals()
+    input_parameters = _get_layer_options(input_layer_options, parameters)
+    inp = Input(**input_parameters, name = 'data')
     x, depth = _conv_block(inp, 32, alpha, stride = 2)
     x, depth = _depthwise_conv_block(x, depth, 64, alpha, depth_multiplier, block_id = 1)
 
@@ -2252,7 +2271,7 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
                                      stride = 2, block_id = 12)
     x, depth = _depthwise_conv_block(x, depth, 1024, alpha, depth_multiplier, block_id = 13)
 
-    x = GlobalAveragePooling2D(name = "Global_avg_pool")(x)
+    x = GlobalAveragePooling2D(name="Global_avg_pool")(x)
     x = OutputLayer(n=n_classes)(x)
 
     model = Model(conn, inp, x, model_table)
@@ -2262,8 +2281,64 @@ def MobileNetV1(conn, model_table='MobileNetV1', n_classes=1000, n_channels=3, w
 
 
 def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, width=224, height=224,
-                norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
+                norm_stds=(255 * 0.229, 255 * 0.224, 255 * 0.225), offsets=(255*0.485, 255*0.456, 255*0.406),
                 random_flip='none', random_crop='none', random_mutation='none', alpha=1):
+    '''
+    Generates a deep learning model with the MobileNetV2 architecture.
+
+    Parameters
+    ----------
+    conn : CAS
+        Specifies the CAS connection object.
+    model_table : string or dict or CAS table, optional
+        Specifies the CAS table to store the deep learning model.
+    n_classes : int, optional
+        Specifies the number of classes. If None is assigned, the model will
+        automatically detect the number of classes based on the training set.
+        Default: 1000
+    n_channels : int, optional
+        Specifies the number of the channels (i.e., depth) of the input layer.
+        Default: 3
+    width : int, optional
+        Specifies the width of the input layer.
+        Default: 32
+    height : int, optional
+        Specifies the height of the input layer.
+        Default: 32
+    random_flip : string, optional
+        Specifies how to flip the data in the input layer when image data is
+        used. Approximately half of the input data is subject to flipping.
+        Valid Values: 'h', 'hv', 'v', 'none'
+        Default: 'none'
+    random_crop : string, optional
+        Specifies how to crop the data in the input layer when image data is
+        used. Images are cropped to the values that are specified in the width
+        and height parameters. Only the images with one or both dimensions
+        that are larger than those sizes are cropped.
+        Valid Values: 'none', 'unique'
+        Default: 'none'
+    random_mutation : string, optional
+        Specifies how to apply data augmentations/mutations to the data in the input layer.
+        Valid Values: 'none', 'random'
+        Default: 'NONE'
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
+    offsets : double or iter-of-doubles, optional
+        Specifies an offset for each channel in the input data. The final input
+        data is set after applying scaling and subtracting the specified offsets.
+        Default: (103.939, 116.779, 123.68)
+    alpha : int, optional
+
+    Returns
+    -------
+    :class:`Model`
+
+    References
+    ----------
+    https://arxiv.org/abs/1801.04381
+
+    '''
     def _make_divisible(v, divisor, min_value = None):
         if min_value is None:
             min_value = divisor
@@ -2303,9 +2378,9 @@ def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, w
             return Res(name = prefix + 'add')([inputs, x]), pointwise_filters
         return x, pointwise_filters
 
-    inp = Input(n_channels = n_channels, width = width, height = height, name = 'data',
-                norm_stds = norm_stds, offsets = offsets,
-                random_flip = random_flip, random_crop = random_crop, random_mutation = random_mutation)
+    parameters = locals()
+    input_parameters = _get_layer_options(input_layer_options, parameters)
+    inp = Input(**input_parameters, name = 'data')
     first_block_filters = _make_divisible(32 * alpha, 8)
     x = Conv2d(first_block_filters, 3, stride = 2, include_bias = False, name = 'Conv1', act = 'identity')(inp)
     x = BN(name = 'bn_Conv1', act='relu')(x)
@@ -2372,7 +2447,7 @@ def MobileNetV2(conn, model_table='MobileNetV2', n_classes=1000, n_channels=3, w
 
 
 def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3, width=224, height=224,
-                 norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
+                 norm_stds=(255 * 0.229, 255 * 0.224, 255 * 0.225), offsets=(255*0.485, 255*0.456, 255*0.406),
                  random_flip='none', random_crop='none', random_mutation='none', scale_factor=1.0,
                  num_shuffle_units = [3, 7, 3], bottleneck_ratio=0.25, groups=3, block_act='identity'):
 
@@ -2487,9 +2562,9 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
     out_channels_in_stage *= scale_factor
     out_channels_in_stage = out_channels_in_stage.astype(int)
 
-    inp = Input(n_channels = n_channels, width = width, height = height, name = 'data',
-                norm_stds = norm_stds, offsets = offsets,
-                random_flip = random_flip, random_crop = random_crop, random_mutation = random_mutation)
+    parameters = locals()
+    input_parameters = _get_layer_options(input_layer_options, parameters)
+    inp = Input(**input_parameters, name = 'data')
 
     # create shufflenet architecture
     x = Conv2d(out_channels_in_stage[0], 3, include_bias=False, stride=2, act="identity", name="conv1")(inp)
@@ -2513,8 +2588,8 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
 
 
 def DenseNet_SAS(conn, blocks, model_table='DenseNet', n_classes=1000, n_channels=3, width=224, height=224,
-             norm_stds=[255 * 0.229, 255 * 0.224, 255 * 0.225], offsets=(255*0.485, 255*0.456, 255*0.406),
-             random_flip='none', random_crop='none', random_mutation='none'):
+                 norm_stds=(255 * 0.229, 255 * 0.224, 255 * 0.225), offsets=(255*0.485, 255*0.456, 255*0.406),
+                 random_flip='none', random_crop='none', random_mutation='none'):
 
     def dense_block(x, blocks, name):
         """A dense block.
@@ -2559,9 +2634,9 @@ def DenseNet_SAS(conn, blocks, model_table='DenseNet', n_classes=1000, n_channel
         x = Concat(name = name + '_concat')([x, x1])
         return x
 
-    inp = Input(n_channels = n_channels, width = width, height = height, name = 'data',
-                norm_stds = norm_stds, offsets = offsets,
-                random_flip = random_flip, random_crop = random_crop, random_mutation = random_mutation)
+    parameters = locals()
+    input_parameters = _get_layer_options(input_layer_options, parameters)
+    inp = Input(**input_parameters, name = 'data')
 
     x = Conv2d(64, 7, stride=2, act = 'identity', include_bias=False, name='conv1/conv')(inp)
     x = BN(name='conv1/bn', act='relu')(x)
@@ -2597,7 +2672,7 @@ def DenseNet_SAS(conn, blocks, model_table='DenseNet', n_classes=1000, n_channel
 
 def DenseNet(conn, model_table='DenseNet', n_classes=None, conv_channel=16, growth_rate=12, n_blocks=4,
              n_cells=4, n_channels=3, width=32, height=32, scale=1, random_flip='none', random_crop='none',
-             offsets=(85, 111, 139)):
+             offsets=(85, 111, 139), norm_stds=None):
     '''
     Generates a deep learning model with the DenseNet architecture.
 
@@ -2670,7 +2745,7 @@ def DenseNet(conn, model_table='DenseNet', n_classes=None, conv_channel=16, grow
     model = Sequential(conn=conn, model_table=model_table)
 
     model.add(InputLayer(n_channels=n_channels, width=width, height=height, scale=scale,
-                         offsets=offsets, random_flip=random_flip, random_crop=random_crop))
+                         offsets=offsets, random_flip=random_flip, random_crop=random_crop, norm_stds=norm_stds))
     # Top layers
     model.add(Conv2d(conv_channel, width=3, act='identity', include_bias=False, stride=1))
 
@@ -2746,6 +2821,9 @@ def DenseNet121(conn, model_table='DENSENET121', n_classes=1000, conv_channel=64
         Specifies an offset for each channel in the input data. The final input
         data is set after applying scaling and subtracting the specified offsets.
         Default: (103.939, 116.779, 123.68)
+    norm_stds : double or iter-of-doubles, optional
+        Specifies a standard deviation for each channel in the input data.
+        The final input data is normalized with specified means and standard deviations.
 
     Returns
     -------
@@ -2805,7 +2883,6 @@ def DenseNet121(conn, model_table='DENSENET121', n_classes=1000, conv_channel=64
 def Darknet_Reference(conn, model_table='Darknet_Reference', n_classes=1000, act='leaky',
                       n_channels=3, width=224, height=224, scale=1.0 / 255, random_flip='H', random_crop='UNIQUE',
                       norm_stds=None, offsets=None):
-
     '''
     Generates a deep learning model with the Darknet_Reference architecture.
 
@@ -4604,7 +4681,9 @@ def InceptionV3(conn, model_table='InceptionV3',
 
 
 def UNet(conn, model_table='UNet', n_channels=3, width=512, height=512, scale=1.0 / 255, n_classes = 2, init = None):
-    inputs = Input(n_channels = n_channels, width = width, height = height, scale = scale, name = 'InputLayer_1')
+    parameters = locals()
+    input_parameters = _get_layer_options(input_layer_options, parameters)
+    inputs = Input(**input_parameters, name = 'InputLayer_1')
     conv1 = Conv2d(64, 3, act = 'relu', init = init)(inputs)
     conv1 = Conv2d(64, 3, act = 'relu', init = init)(conv1)
     pool1 = Pooling(2)(conv1)
@@ -4663,8 +4742,9 @@ def Nest_Net(conn, model_table='Nest_Net', n_channels=1, width=512, height=512, 
         return x
 
     nb_filter = [32, 64, 128, 256, 512]
-
-    inputs = Input(n_channels = n_channels, width = width, height = height, scale = scale, name = 'InputLayer_1')
+    parameters = locals()
+    input_parameters = _get_layer_options(input_layer_options, parameters)
+    inputs = Input(**input_parameters, name = 'InputLayer_1')
 
     conv1_1 = standard_unit(inputs, stage='11', nb_filter=nb_filter[0])
     pool1 = Pooling(width = 2, height = 2, stride=2, name='pool1')(conv1_1)
@@ -4751,15 +4831,18 @@ def Nest_Net(conn, model_table='Nest_Net', n_channels=1, width=512, height=512, 
 
 
 def Faster_RCNN(conn, model_table='Faster_RCNN', n_channels=3, width=1000, height=496, scale=1,
-                offsets=[102.9801,115.9465,122.7717], random_mutation = 'none',
+                norm_stds=None, offsets=[102.9801,115.9465,122.7717], random_mutation = 'none',
                 n_classes=20, anchor_num_to_sample = 256, anchor_scale = [8, 16, 32], anchor_ratio = [0.5, 1, 2],
                 base_anchor_size = 16, coord_type = 'coco', max_label_per_image = 200, proposed_roi_num_train = 2000,
                 proposed_roi_num_score = 300, roi_train_sample_num = 128,
                 roi_pooling_width = 7, roi_pooling_height = 7,
                 nms_iou_threshold = 0.3, detection_threshold = 0.5, max_objec_num = 50):
     num_anchors = len(anchor_ratio) * len(anchor_scale)
-    inp = Input(n_channels = n_channels, width = width, height = height, scale = scale, offsets = offsets,
-                random_mutation = random_mutation, name='data')
+    parameters = locals()
+    input_parameters = _get_layer_options(input_layer_options, parameters)
+    rpn_parameters = _get_layer_options(rpn_layer_options, parameters)
+    fast_rcnn_parameters = _get_layer_options(fast_rcnn_options, parameters)
+    inp = Input(**input_parameters, name='data')
 
     conv1_1 = Conv2d(n_filters = 64, width = 3, height = 3, stride = 1, name='conv1_1')(inp)
     conv1_2 = Conv2d(n_filters = 64, width = 3, height = 3, stride = 1, name='conv1_2')(conv1_1)
@@ -4787,13 +4870,7 @@ def Faster_RCNN(conn, model_table='Faster_RCNN', n_channels=3, width=1000, heigh
     rpn_score = Conv2d(act = 'identity', width = 1, n_filters = ((1 + 1 + 4) * num_anchors),
                        name = 'rpn_score')(rpn_conv)
 
-    rp1 = RegionProposal(max_label_per_image = max_label_per_image, base_anchor_size = base_anchor_size,
-                         coord_type = coord_type, name = 'rois', anchor_num_to_sample = anchor_num_to_sample,
-                         anchor_scale = anchor_scale, anchor_ratio = anchor_ratio,
-                         proposed_roi_num_train = proposed_roi_num_train,
-                         proposed_roi_num_score = proposed_roi_num_score,
-                         roi_train_sample_num = roi_train_sample_num
-                         )(rpn_score)
+    rp1 = RegionProposal(**rpn_parameters, name = 'rois')(rpn_score)
     roipool1 = ROIPooling(output_height=roi_pooling_height, output_width=roi_pooling_width,
                           spatial_scale=conv5_3.shape[0]/width,
                           name = 'roi_pooling')([conv5_3, rp1])
@@ -4802,9 +4879,7 @@ def Faster_RCNN(conn, model_table='Faster_RCNN', n_channels=3, width=1000, heigh
     fc7 = Dense(n = 4096, act = 'relu', name = 'fc7')(fc6)
     cls1 = Dense(n = n_classes+1, act = 'identity', name = 'cls_score')(fc7)
     reg1 = Dense(n = (n_classes+1)*4, act = 'identity', name = 'bbox_pred')(fc7)
-    fr1 = FastRCNN(nms_iou_threshold = nms_iou_threshold, max_label_per_image = max_label_per_image,
-                   max_object_num = max_objec_num,  detection_threshold = detection_threshold,
-                   class_number = n_classes, name = 'fastrcnn')([cls1, reg1, rp1])
+    fr1 = FastRCNN(**fast_rcnn_parameters, class_number = n_classes, name = 'fastrcnn')([cls1, reg1, rp1])
     faster_rcnn = Model(conn, inp, fr1, model_table = model_table)
     faster_rcnn.compile()
     return faster_rcnn
