@@ -18,7 +18,10 @@
 
 ''' Special functionality for CAS tables containing image data '''
 
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ModuleNotFoundError:
+    pass
 import numpy as np
 from swat.cas.table import CASTable
 from .utils import random_name, image_blocksize, caslibify

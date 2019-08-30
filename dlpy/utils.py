@@ -22,8 +22,11 @@ import json
 import os
 import platform
 import random
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+except ModuleNotFoundError:
+    pass
 import numpy as np
 import pandas as pd
 import re

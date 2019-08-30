@@ -19,7 +19,10 @@
 ''' The Model class adds training, evaluation, tuning and feature analysis routines to a Network '''
 
 import os
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ModuleNotFoundError:
+    pass
 import numpy as np
 import pandas as pd
 import collections

@@ -25,7 +25,10 @@ from dlpy.utils import DLPyError
 from swat.cas import datamsghandlers
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ModuleNotFoundError:
+    pass
 import warnings
 import datetime
 import numbers

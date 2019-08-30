@@ -22,7 +22,10 @@
 from .utils import random_name
 from swat.cas.table import CASColumn
 from swat.cas.table import CASTable
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ModuleNotFoundError:
+    pass
 import numpy as np
 import warnings
 
