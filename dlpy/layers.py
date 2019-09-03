@@ -190,7 +190,7 @@ class Layer(object):
     def __call__(self, inputs):
         layer_type = self.__class__.__name__
         if isinstance(inputs, list):
-            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale', 'CLoss',
+            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale', 'EmbeddingLoss',
                                                       'Dense', 'Model', 'OutputLayer', 'ROIPooling', 'FastRCNN']:
                 raise DLPyError('The input of {} should have only one layer.'.format(layer_type))
         else:
