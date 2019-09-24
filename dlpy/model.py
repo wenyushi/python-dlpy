@@ -3001,6 +3001,11 @@ class Optimizer(DLPyDict):
         Default : False
     freeze_layers : list of string
         Specifies a list of layer names whose trainable parameters will be frozen.
+    ignore_training_error : bool, optional
+        Discards training data observations that contain invalid or missing variable data,
+        and continues model training without interruption when true. When false,
+        training stops and exits if bad input data is found.
+        Default : False
 
     Returns
     -------
@@ -3011,7 +3016,7 @@ class Optimizer(DLPyDict):
                  dropout=0, dropout_input=0, dropout_type='standard', stagnation=0, threshold=0.00000001, f_conv=0,
                  snapshot_freq=0, log_level=0, bn_src_layer_warnings=True, freeze_layers_to=None, flush_weights=False,
                  total_mini_batch_size=None, mini_batch_buf_size=None,
-                 freeze_layers=None, freeze_batch_norm_stats=False):
+                 freeze_layers=None, freeze_batch_norm_stats=False, ignore_training_error=False):
         DLPyDict.__init__(self, algorithm=algorithm, mini_batch_size=mini_batch_size, seed=seed, max_epochs=max_epochs,
                           reg_l1=reg_l1, reg_l2=reg_l2, dropout=dropout, dropout_input=dropout_input,
                           dropout_type=dropout_type, stagnation=stagnation, threshold=threshold, f_conv=f_conv,
@@ -3019,7 +3024,8 @@ class Optimizer(DLPyDict):
                           bn_src_layer_warnings=bn_src_layer_warnings, freeze_layers_to=freeze_layers_to,
                           flush_weights=flush_weights, total_mini_batch_size=total_mini_batch_size,
                           mini_batch_buf_size=mini_batch_buf_size,
-                          freeze_layers=freeze_layers, freeze_batch_norm_stats=freeze_batch_norm_stats)
+                          freeze_layers=freeze_layers, freeze_batch_norm_stats=freeze_batch_norm_stats,
+                          ignore_training_error=ignore_training_error)
 
     def add_optimizer_mode(self, solver_mode_type='sync', sync_freq=None, alpha=None, damping=None):
         '''

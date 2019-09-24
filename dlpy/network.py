@@ -2054,6 +2054,7 @@ def extract_fc_layer(layer_table):
     layer = Dense(**fc_layer_config)
     return layer
 
+
 def extract_recurrent_layer(layer_table):
     '''
     Extract layer configuration from a recurrent layer table
@@ -2131,6 +2132,7 @@ def extract_recurrent_layer(layer_table):
 
     layer = Recurrent(**recurrent_layer_config)
     return layer
+
 
 def extract_output_layer(layer_table):
     '''
