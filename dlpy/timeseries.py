@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 try:
     import matplotlib.pyplot as plt
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError):
     pass
 import warnings
 import datetime

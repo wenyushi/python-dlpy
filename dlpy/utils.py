@@ -25,7 +25,7 @@ import random
 try:
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError):
     pass
 import numpy as np
 import pandas as pd

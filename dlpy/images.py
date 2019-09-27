@@ -20,7 +20,7 @@
 
 try:
     import matplotlib.pyplot as plt
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError):
     pass
 import numpy as np
 from swat.cas.table import CASTable

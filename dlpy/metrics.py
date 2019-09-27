@@ -24,7 +24,7 @@ from swat.cas.table import CASColumn
 from swat.cas.table import CASTable
 try:
     import matplotlib.pyplot as plt
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError):
     pass
 import numpy as np
 import pandas as pd
