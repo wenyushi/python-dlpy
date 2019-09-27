@@ -20,6 +20,7 @@
 import unittest
 import swat
 import swat.utils.testing as tm
+import csv
 from dlpy.utils import *
 from dlpy.images import ImageTable
 
@@ -186,6 +187,12 @@ class TestUtils(unittest.TestCase):
         get_txt_annotation(self.data_dir_local+'dlpy_obj_det_test', 'yolo', (416, 512))
         get_txt_annotation(self.data_dir_local + 'dlpy_obj_det_test', 'coco', (416, 512))
 
+    def test_get_txt_annotation_name_file(self):
+        if self.data_dir_local is None:
+            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR_LOCAL is not set in the environment variables")
+        get_txt_annotation(self.data_dir_local+'dlpy_obj_det_test', 'yolo', (416, 512),
+                           name_file = os.path.join(self.data_dir_local, 'dlpy_obj_det_test', 'coco.names'))
+
     def test_unify_keys(self):
         dict_1={
             'Key1':'abc',
@@ -349,7 +356,115 @@ class TestUtils(unittest.TestCase):
                                         path_to_images=self.data_dir+'segmentation_data'+sep+'raw',
                                         path_to_ground_truth=self.data_dir+'segmentation_data'+sep+'mask')
 
+    def test_caslibify_context(self):
+        if self.data_dir is None:
+            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
 
+        server_type = get_cas_host_type(self.s).lower()
 
+        if server_type.startswith("lin") or server_type.startswith("osx"):
+            sep = '/'
+        else:
+            sep = '\\'
+        tmp_caslib = None
+        # save task
+        with caslibify_context(self.s, self.data_dir+'segmentation_data'+sep+'raw', 'load') as (caslib, path):
+            tmp_caslib = caslib
+            df = self.s.caslibinfo().CASLibInfo['Name']
+            # in the context, the new caslib should be created
+            self.assertEqual(df[df == caslib].shape[0], 1)
+            try:
+                raise DLPyError('force to throw an error')
+            except DLPyError:
+                pass
+        # expect the caslib is removed even if the error occurs
+        df = self.s.caslibinfo().CASLibInfo['Name']
+        self.assertEqual(df[df == tmp_caslib].shape[0], 0)
+
+        # save task
+        with caslibify_context(self.s, self.data_dir+'segmentation_data'+sep+'raw', 'save') as (caslib, path):
+            tmp_caslib = caslib
+            df = self.s.caslibinfo().CASLibInfo['Name']
+            # in the context, the new caslib should be created
+            self.assertEqual(df[df == caslib].shape[0], 1)
+            try:
+                raise DLPyError('force to throw an error')
+            except DLPyError:
+                pass
+        # expect the caslib is removed even if the error occurs
+        df = self.s.caslibinfo().CASLibInfo['Name']
+        self.assertEqual(df[df == tmp_caslib].shape[0], 0)
+
+    def test_user_defined_labels(self):
+        if self.data_dir is None:
+            unittest.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
+
+        server_type = get_cas_host_type(self.s).lower()
+
+        if server_type.startswith("lin") or server_type.startswith("osx"):
+            sep = '/'
+        else:
+            sep = '\\'
+            
+        # write user-defined label table to CSV file
+        levels = [
+                  '&', # : 0,
+                  'A', # : 1,
+                  'B', # : 2,
+                  'C', # : 3,
+                  'D', # : 4,
+                  'E', # : 5,
+                  'F', # : 6,
+                  'G', # : 7,
+                  'H', # : 8,
+                  'I', # : 9,
+                  'J', # : 10,
+                  'K', # : 11,
+                  'L', # : 12,
+                  'M', # : 13,
+                  'N', # : 14,
+                  'O', # : 15,
+                  'P', # : 16,
+                  'Q', # : 17,
+                  'R', # : 18,
+                  'S', # : 19,
+                  'T', # : 20,
+                  'U', # : 21,
+                  'V', # : 22,
+                  'W', # : 23,
+                  'X', # : 24,
+                  'Y', # : 25,
+                  'Z', # : 26,
+                  '\'', # : 27
+                  ' ', # : 28
+                ]
+
+        # save labels file to local data directory
+        header = ['label_id'] + ['label']
+
+        import os
+        label_file_name = os.path.join(self.data_dir_local, 'rnn_import_labels.csv')
+        with open(label_file_name, 'w+') as f:
+            writer = csv.writer(f, delimiter=',')
+            writer.writerow(header)
+
+            for ii, lval in enumerate(levels):
+                row = [str(ii)] + [lval]
+                writer.writerow(row)
+
+        # test using maximum label length in CSV to set uploaded table label length
+        label_table1 = get_user_defined_labels_table(self.s, label_file_name, None)
+
+        self.assertTrue(label_table1 is not None)
+
+        # test specifying label length to set uploaded table label length
+        label_table2 = get_user_defined_labels_table(self.s, label_file_name, 6)
+
+        self.assertTrue(label_table2 is not None)
+
+        os.remove(label_file_name)
+
+    def test_print_predefined_models(self):
+        print_predefined_models()
 
 
