@@ -42,7 +42,7 @@ class TestNetwork(tm.TestCase):
         swat.options.cas.print_messages = False
         swat.options.interactive_mode = False
 
-        cls.s = swat.CAS()
+        cls.s = swat.CAS('dlgrd009', 13301)
         cls.server_type = tm.get_cas_host_type(cls.s)
 
         if cls.server_type.startswith("lin") or cls.server_type.startswith("osx"):
@@ -460,6 +460,30 @@ class TestNetwork(tm.TestCase):
 
         with self.assertRaises(DLPyError):
             model1.deploy(path='/amran/komran', output_format='astore')
+
+    def test_mix_cnn_rnn_network(self):
+        from dlpy.applications import ResNet50_Caffe
+        from dlpy import Sequential
+        from dlpy.blocks import Bidirectional
+        # the case is to test if CNN and RNN model can be connect using functional api
+        # the model_type is expected to be RNN in 19w47.
+        # CNN
+        model = ResNet50_Caffe(self.s)
+        cnn_head = model.to_functional_model(stop_layers = model.layers[-1])
+        # RNN
+        model_rnn = Sequential(conn = self.s, model_table = 'rnn')
+        model_rnn.add(Bidirectional(n = 100, n_blocks = 2))
+        model_rnn.add(OutputLayer(name='fixed'))
+
+        f_rnn = model_rnn.to_functional_model()
+        # connecting
+        inp = Input(**cnn_head.layers[0].config)
+        x = cnn_head(inp)
+        y = f_rnn(x)
+        cnn_rnn = Model(self.s, inp, y)
+        cnn_rnn.compile()
+        # check type
+        self.assertTrue(cnn_rnn.model_type, 'RNN')
 
     @classmethod
     def tearDownClass(cls):

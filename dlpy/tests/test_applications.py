@@ -43,7 +43,7 @@ class TestApplications(unittest.TestCase):
         swat.reset_option()
         swat.options.cas.print_messages = False
         swat.options.interactive_mode = False
-        cls.s = swat.CAS()
+        cls.s = swat.CAS('dlgrd009', 13301)
         cls.server_type = tm.get_cas_host_type(cls.s)
 
         cls.server_sep = '\\'
@@ -796,4 +796,11 @@ class TestApplications(unittest.TestCase):
                      bn_after_convolutions=True)
         self.assertTrue(len(model.layers) == 33 + 9 * 2)
         self.assertTrue(model.layers[12].output_size == (256, 256, 256))
+        model.print_summary()
+
+    def test_shufflenetv2(self):
+        from dlpy.applications import ShuffleNetV2
+        model = ShuffleNetV2(self.s)
+        self.assertTrue(len(model.layers) == 130)
+        self.assertTrue(model.layers[127]._output_size == (4, 4, 3200))
         model.print_summary()

@@ -192,7 +192,8 @@ class Layer(object):
         layer_type = self.__class__.__name__
         if isinstance(inputs, list):
             if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale', 'CLoss',
-                                                      'Dense', 'Model', 'OutputLayer', 'ROIPooling', 'FastRCNN']:
+                                                      'Dense', 'Model', 'OutputLayer', 'ROIPooling', 'FastRCNN',
+                                                      'Recurrent']:
                 raise DLPyError('The input of {} should have only one layer.'.format(layer_type))
         else:
             inputs = [inputs]
@@ -2586,7 +2587,7 @@ class Split(Layer):
     can_be_last_layer = False
     number_of_instances = 0
 
-    def __init__(self, name = None, src_layers = None, **kwargs):
+    def __init__(self, n_groups, name = None, src_layers = None, **kwargs):
 
         if not __dev__ and len(kwargs) > 0:
             raise DLPyError('**kwargs can be used only in development mode.')
@@ -2597,6 +2598,8 @@ class Split(Layer):
         self._output_size = None
         Layer.__init__(self, name, parameters, src_layers)
         self.color_code = get_color(self.type)
+        self.n_groups = n_groups
+        self.config['nGroups'] = n_groups
 
     @property
     def kernel_size(self):
@@ -2609,7 +2612,8 @@ class Split(Layer):
     @property
     def output_size(self):
         if self._output_size is None:
-            self.src_layers[0]
+            src_shape = self.src_layers[0].output_size
+            self._output_size = (src_shape[0], src_shape[1], int(src_shape[2]/self.n_groups))
         return self._output_size
 
     @property

@@ -18,7 +18,7 @@
 
 
 from dlpy.layers import (Conv2d, BN, Pooling, Concat, OutputLayer, GlobalAveragePooling2D, GroupConv2d,
-                         ChannelShuffle, Res, Input)
+                         ChannelShuffle, Res, Input, Split)
 from dlpy.utils import DLPyError
 from dlpy.model import Model
 from .application_utils import get_layer_options, input_layer_options
@@ -234,6 +234,117 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
     x = OutputLayer(n=n_classes)(x)
 
     model = Model(conn, inputs=inp, outputs=x, model_table=model_table)
+    model.compile()
+
+    return model
+
+
+def ShuffleNetV2(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3, width=224, height=224,
+                 norm_stds=(255*0.229, 255*0.224, 255*0.225), offsets=(255*0.485, 255*0.456, 255*0.406),
+                 random_flip=None, random_crop=None, random_mutation=None, scale_factor=1.0,
+                 num_shuffle_units=[3, 7, 3], bottleneck_ratio=1, block_act='identity'):
+    '''https://github.com/opconty/keras-shufflenetV2'''
+    # def channel_split(x, name = ''):
+    #     # equipartition
+    #     in_channles = x.shape.as_list()[-1]
+    #     ip = in_channles // 2
+    #     c_hat = Lambda(lambda z: z[:, :, :, 0:ip], name = '%s/sp%d_slice' % (name, 0))(x)
+    #     c = Lambda(lambda z: z[:, :, :, ip:], name = '%s/sp%d_slice' % (name, 1))(x)
+    #     return c_hat, c
+    #
+    # def channel_shuffle(x):
+    #     height, width, channels = x.shape.as_list()[1:]
+    #     channels_per_split = channels // 2
+    #     x = K.reshape(x, [-1, height, width, 2, channels_per_split])
+    #     x = K.permute_dimensions(x, (0, 1, 2, 4, 3))
+    #     x = K.reshape(x, [-1, height, width, channels])
+    #     return x
+
+    def shuffle_unit(inputs, out_channels, bottleneck_ratio, strides = 2, stage = 1, block = 1):
+
+        prefix = 'stage{}/block{}'.format(stage, block)
+        bottleneck_channels = int(out_channels * bottleneck_ratio)
+        if strides < 2:
+            inputs = Split(n_groups = 2, name = '{}/spl'.format(prefix))(inputs)
+
+        x = Conv2d(bottleneck_channels, 1, stride = 1, act = 'identity', include_bias = False,
+                   name = '{}/1x1conv_1'.format(prefix))(inputs)
+        x = BN(act = 'relu', name = '{}/bn_1x1conv_1'.format(prefix))(x)
+        x = GroupConv2d(x.shape[2], x.shape[2], width = 3, stride = strides, include_bias = False,
+                        name = '{}/3x3dwconv'.format(prefix))(x)
+        x = BN(act = 'relu', name = '{}/bn_3x3dwconv'.format(prefix))(x)
+        x = Conv2d(bottleneck_channels, 1, stride = 1, act = 'identity', include_bias = False,
+                   name = '{}/1x1conv_2'.format(prefix))(x)
+        x = BN(act = 'relu', name = '{}/bn_1x1conv_2'.format(prefix))(x)
+
+        if strides < 2:
+            inputs = Pooling(1, 1, 1, name = '{}/split_pool'.format(prefix))(inputs)
+            ret = Concat(name = '{}/concat_1'.format(prefix))([x, inputs])
+        else:
+            s2 = GroupConv2d(inputs.shape[2], inputs.shape[2], 3, stride = 2, include_bias = False,
+                             name = '{}/3x3dwconv_2'.format(prefix))(inputs)
+            s2 = BN(act = 'relu', name = '{}/bn_3x3dwconv_2'.format(prefix))(s2)
+            s2 = Conv2d(bottleneck_channels, 1, stride = 1, act = 'identity', include_bias = False,
+                        name = '{}/1x1_conv_3'.format(prefix))(s2)
+            s2 = BN(act = 'relu', name = '{}/bn_1x1conv_3'.format(prefix))(s2)
+            ret = Concat(name = '{}/concat_2'.format(prefix))([x, s2])
+
+        ret = ChannelShuffle(n_groups=2, name = '{}/channel_shuffle'.format(prefix))(ret)
+
+        return ret
+
+    def block(x, channel_map, bottleneck_ratio, repeat = 1, stage = 1):
+        x = shuffle_unit(x, out_channels = channel_map[stage - 1],
+                         strides = 2, bottleneck_ratio = bottleneck_ratio, stage = stage, block = 1)
+
+        for i in range(1, repeat + 1):
+            x = shuffle_unit(x, out_channels = channel_map[stage - 1], strides = 1,
+                             bottleneck_ratio = bottleneck_ratio, stage = stage, block = (1 + i))
+
+        return x
+
+    try:
+        import numpy as np
+    except ImportError:
+        raise DLPyError('Please install numpy to use this architecture.')
+
+    name = 'ShuffleNetV2_{}_{}_{}'.format(scale_factor, bottleneck_ratio, "".join([str(x) for x in num_shuffle_units]))
+
+    out_dim_stage_two = {0.5:48, 1:116, 1.5:176, 2:244}
+    if not (float(scale_factor)*4).is_integer():
+        raise ValueError('Invalid value for scale_factor, should be x over 4')
+
+    exp = np.insert(np.arange(len(num_shuffle_units), dtype=np.float32), 0, 0)  # [0., 0., 1., 2.]
+    out_channels_in_stage = 2**exp
+    out_channels_in_stage *= out_dim_stage_two[bottleneck_ratio]  #  calculate output channels for each stage
+    out_channels_in_stage[0] = 24  # first stage has always 24 output channels
+    out_channels_in_stage *= scale_factor
+    out_channels_in_stage = out_channels_in_stage.astype(int)
+
+    parameters = locals()
+    input_parameters = get_layer_options(input_layer_options, parameters)
+    inp = Input(**input_parameters, name = 'data')
+
+    # create shufflenet architecture
+    x = Conv2d(n_filters=out_channels_in_stage[0], width=3, height = 3, include_bias=False, stride=2,
+               act='relu', name='conv1')(inp)
+    x = Pooling(width = 2, height = 2, name='maxpool1')(x)
+
+    # create stages containing shufflenet units beginning at stage 2
+    for stage in range(len(num_shuffle_units)):
+        repeat = num_shuffle_units[stage]
+        x = block(x, out_channels_in_stage, repeat=repeat, bottleneck_ratio=bottleneck_ratio, stage=stage + 2)
+
+    if bottleneck_ratio < 2:
+        k = 1024
+    else:
+        k = 2048
+    x = Conv2d(k, width=1, height = 1, name='1x1conv5_out', act='relu')(x)
+
+    x = GlobalAveragePooling2D(name='global_avg_pool')(x)
+    x = OutputLayer(n = n_classes)(x)
+
+    model = Model(conn, inputs = inp, outputs = x, model_table = model_table)
     model.compile()
 
     return model
