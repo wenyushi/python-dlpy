@@ -2621,6 +2621,58 @@ class Split(Layer):
         return 0
 
 
+class Survival(Layer):
+    '''
+    Survival layer
+
+    Parameters
+    ----------
+    name : string, optional
+        Specifies the name of the layer.
+    src_layers : Layers, optional
+        Specifies the layer directed to this layer.
+
+    Returns
+    -------
+    :class:`Scale`
+
+    '''
+    type = 'survival'
+    type_label = 'Survival'
+    type_desc = 'Survival layer'
+    can_be_last_layer = False
+    number_of_instances = 0
+
+    def __init__(self, name = None, src_layers = None, **kwargs):
+
+        if not __dev__ and len(kwargs) > 0:
+            raise DLPyError('**kwargs can be used only in development mode.')
+
+        parameters = locals()
+        parameters = _unpack_config(parameters)
+        # _clean_parameters(parameters)
+        self._output_size = None
+        Layer.__init__(self, name, parameters, src_layers)
+        self.color_code = get_color(self.type)
+
+    @property
+    def kernel_size(self):
+        return None
+
+    @property
+    def num_weights(self):
+        return 0
+
+    @property
+    def output_size(self):
+        # survival layer output and input can only be 1
+        return self.src_layers[0].output_size
+
+    @property
+    def num_bias(self):
+        return 0
+
+
 def _clean_input_parameters(parameters):
     del parameters['self']
     del parameters['name']

@@ -2495,3 +2495,5 @@ def extract_fastrcnn_layer(layer_table):
 
     layer = FastRCNN(**rpn_layer_config)
     return layer
+
+#TODO： add new layers to be extracted from table
