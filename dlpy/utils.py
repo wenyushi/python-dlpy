@@ -2459,3 +2459,127 @@ class DLPyDict(collections.MutableMapping):
 
     def __str__(self):
         return str(self.__dict__)
+
+
+def display_segmentation(conn, table, annotation_parameters, num_plot, input_background = 0, n_col = 2,
+                         fig_size = None):
+    conn.retrieve('loadactionset', _messagelevel = 'error', actionset = 'image')
+
+    label_char_cols = [x for x in list(conn.CASTable(table).columns) if 'PredName' in x]
+    masks_cols = []
+    annotated_img = random_name('Annotated', 6)
+    annotations = []
+    rename_var = 'raw_image'
+
+    # select number of images to show
+    with sw.option_context(print_messages = False):
+        image_summary = conn.image.summarizeimages(table).Summary
+    width = image_summary.loc[0, 'minWidth']
+    height = image_summary.loc[0, 'minHeight']
+
+    convert_to_numeric_code = ""
+    for i, an_param in enumerate(annotation_parameters):
+        mask_cols = [x + 'num{}'.format(i) for x in label_char_cols]
+        class_name = an_param['class']
+        for x, y in zip(label_char_cols, mask_cols):
+            convert_to_numeric_code += "length {1} 2; if {0} = {2} then {1} = {2}; else {1} = {3};".format(x, y,
+                                                                                                           class_name,
+                                                                                                           input_background)
+        masks_cols.append(mask_cols)
+
+    with sw.option_context(print_messages = False):
+        flatten_masks_cols = [item for sublist in masks_cols for item in sublist]
+        conn.partition(table = dict(name = table, computedvars = flatten_masks_cols,
+                                    computedvarsprogram = convert_to_numeric_code),
+                       casout = dict(name = annotated_img, replace = 1))
+        conn.altertable(table = annotated_img, columns = [dict(name = '_image_', rename = rename_var)])
+    temp_vars = [rename_var]
+    for i, cols in enumerate(masks_cols):
+        renamed_dimension = '_dimension_{}'.format(i)
+        renamed_resolution = '_resolution_{}'.format(i)
+        renamed_image_format = '_imageFormat_{}'.format(i)
+        renamed_mask = 'mask_{}'.format(i)
+        color = annotation_parameters[i]['color']
+        transparency = annotation_parameters[i]['transparency']
+        annotation = dict(annotationparameters = dict(annotationType = 'segmentation',
+                                                      image = renamed_mask,
+                                                      dimension = renamed_dimension,
+                                                      resolution = renamed_resolution,
+                                                      imageFormat = renamed_image_format,
+                                                      colorMap = color, transparency = transparency,
+                                                      inputbackground = input_background))
+        copy_vars = [item for sublist in masks_cols[i + 1:] for item in sublist] + temp_vars
+        conn.condenseimages(table = annotated_img, height = height, width = width,
+                            casout = dict(name = annotated_img, replace = 1),
+                            copyvars = copy_vars, inputs = cols, numberofchannels = 'GRAY_SCALE_IMAGE')
+        # walk around to rename the decode meta data
+        conn.altertable(annotated_img, columns = [dict(name = '_image_', rename = renamed_mask),
+                                                  dict(name = '_dimension_', rename = renamed_dimension),
+                                                  dict(name = '_resolution_', rename = renamed_resolution),
+                                                  dict(name = '_imageFormat_', rename = renamed_image_format)])
+        annotations.append(annotation)
+        # update copy vars
+        temp_vars += [renamed_mask, renamed_dimension, renamed_resolution, renamed_image_format]
+    with sw.option_context(print_messages = False):
+        conn.annotateimages(images = dict(table = annotated_img, image = rename_var),
+                            casout = dict(name = annotated_img, replace = 1),
+                            annotations = annotations)
+    plot_helper(conn, annotated_img, num_plot, n_col, fig_size)
+    with sw.option_context(print_messages=False):
+        conn.table.droptable(annotated_img)
+
+
+def layer_out_to_arrays(conn, layer_out_table, idx=0):
+    # only support wide format
+    res = []
+    layer_out_df = conn.fetch(layer_out_table, from_=idx+1, to=-1, sastypes=False).Fetch
+    array_cols = [i for i in conn.columninfo(layer_out_table).ColumnInfo.Column.values if i.startswith('_LayerAct_')]
+    layer_id = list(set([col.split('_')[2] for col in array_cols])) # ['', 'LayerAct', '20', '0', '0', '1', '']
+    for l in layer_id:
+        layer_cols = [i for i in array_cols if i.startswith('_LayerAct_'+str(l))]
+        col_s = layer_cols[0].split('_')
+        n_dims = len(col_s)-4
+        shape = [] # chw
+        for d in range(n_dims):
+            shape.append(max(int(i.split('_')[3+d]) for i in layer_cols)+1)
+        res.append({l: layer_out_df[layer_cols].values[0].reshape(shape)})
+    return res
+
+
+def plot_helper(conn, image_table, num_plot, n_col, fig_size=None):
+    with sw.option_context(print_messages = False):
+        num_plot = min(conn.numrows(image_table).numrows, num_plot)
+        fetch_images_data = conn.image.fetchImages(imageTable = {'name': image_table},
+                                                   to = num_plot,
+                                                   fetchImagesVars = ['_image_', '_path_'])
+
+    if num_plot > n_col:
+        n_row = num_plot // n_col + 1
+    else:
+        n_row = 1
+        n_col = num_plot
+
+    n_col_m = n_col
+    if n_col_m < 1:
+        n_col_m += 1
+
+    n_row_m = n_row
+    if n_row < 1:
+        n_row_m += 1
+
+    if fig_size is None:
+        fig_size = (16, 16 // n_col_m * n_row_m)
+
+    fig = plt.figure(figsize = fig_size)
+
+    k = 1
+
+    for i in range(num_plot):
+        image = fetch_images_data['Images']['Image'][i]
+        ax = fig.add_subplot(n_row, n_col, k)
+        plt.imshow(image)
+        if '_path_' in fetch_images_data['Images'].columns:
+            plt.title(str(os.path.basename(fetch_images_data['Images']['_path_'].loc[i])))
+        k = k + 1
+        plt.xticks([]), plt.yticks([])
+    plt.show()
