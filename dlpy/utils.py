@@ -1431,9 +1431,8 @@ def create_object_detection_table(conn, data_path, coord_type, output,
                 run;
                 '''.format(output, string_input_tbl_name)
     conn.runcode(code = fmt_code, _messagelevel = 'error')
-    cls_col_format_length = conn.columninfo(output).ColumnInfo.loc[0][3]
+    cls_col_format_length = conn.columninfo(output).ColumnInfo['RawLength'][0]  # max class name length
     cls_col_format_length = cls_col_format_length if cls_col_format_length >= len('NoObject') else len('NoObject')
-
     conn.altertable(name = output, columns = [dict(name = 'Var1', rename = var_name[0]),
                                               dict(name = 'Var2', rename = var_name[1]),
                                               dict(name = 'Var3', rename = var_name[2]),

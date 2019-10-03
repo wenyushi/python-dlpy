@@ -467,4 +467,13 @@ class TestUtils(unittest.TestCase):
     def test_print_predefined_models(self):
         print_predefined_models()
 
+    def test_xindian_dataset(self):
+        imW = 416;
+        imH = 416;
+        object_detection_targets = create_object_detection_table(self.s, coord_type = 'coco', image_size = (imW, imH),
+                                                                 output = 'obj_det_tbl',
+                                                                 local_path = r'\\sashq\root\data\DeepLearn\weshiz\mask_annotated',
+                                                                 data_path = '/cas/DeepLearn/weshiz/mask_annotated')
+
+
 
