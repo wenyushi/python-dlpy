@@ -21,8 +21,8 @@
 import os
 
 from dlpy.layers import Layer
-from dlpy.utils import DLPyError, input_table_check, random_name, check_caslib, caslibify, get_server_path_sep,\
-    underscore_to_camelcase, caslibify_context
+from dlpy.utils import DLPyError, input_table_check, random_name, check_caslib, caslibify, get_server_path_sep, \
+    underscore_to_camelcase, caslibify_context, isnotebook
 from .layers import InputLayer, Conv2d, Pooling, BN, Res, Concat, Dense, OutputLayer, Keypoints, Detection, Scale,\
     Reshape, GroupConv2d, ChannelShuffle, RegionProposal, ROIPooling, FastRCNN, Conv2DTranspose, Recurrent
 import dlpy.model
@@ -109,6 +109,7 @@ class Network(Layer):
         self.target = None
         self.num_params = None
         self.count_instances()
+        self.model_counter = 0
 
     def _map_graph_network(self, inputs, outputs):
         '''
@@ -159,6 +160,9 @@ class Network(Layer):
 
     def compile(self):
         ''' parse the network nodes and process CAS Action '''
+        for l in self.layers:
+            if isinstance(l, Recurrent):
+                self.model_type = 'RNN'
         rt = self._retrieve_('deeplearn.buildmodel',
                              model=dict(name=self.model_name, replace=True), type=self.model_type)
 
@@ -169,6 +173,35 @@ class Network(Layer):
         if rt.severity > 1:
             raise DLPyError('cannot build model, there seems to be a problem.')
         self.num_params = 0
+
+        # before addLayer, self.layers are reordered based on layer_id
+        # the new id is created based on model.summary which contains layer_id.
+        # since it is not compiled, it might contains None or index from it original model summary.
+        orig_ids = self.summary['Layer Id']
+        offset_id = 0
+        new_ids = []  # store new ids
+        pool = []  # pool to store index has been added
+        for idx, l_id in enumerate(orig_ids):
+            # encounter None id or duplicated id, start a new Model
+            if l_id is None or l_id in pool:
+                offset_id = idx
+                pool = []
+            else:
+                pool.append(l_id)
+
+            # calculate new index for the layer
+            if l_id is None:
+                l_id = offset_id
+            else:
+                l_id += offset_id
+
+            new_ids.append(l_id)
+
+        # reassign layer_id
+        for i, l in enumerate(self.layers):
+            l.layer_id = new_ids[i]
+        self.layers.sort()  # sort based on layer_id
+
         for layer in self.layers:
             option = layer.to_model_params()
             rt = self._retrieve_('deeplearn.addlayer', model = self.model_name, **option)
@@ -650,26 +683,32 @@ class Network(Layer):
                             self.num_params += l.num_weights
                         if l.num_bias is not None:
                             self.num_params += l.num_bias
+                num_params_str = format(self.num_params, ",d")  # value with comma
 
                 total_FLOPS = 0
                 for l in self.layers:
                     if l.FLOPS:
                         total_FLOPS += l.FLOPS
+                total_FLOPS = format(total_FLOPS, ",d")  # value with comma
                 MB = 2**20
-                self.total_FLOPS_in_unit = round(total_FLOPS / MB, 3)  # MFLOPS
                 # total summary rows
                 total = pd.DataFrame([['', '', '', '', '', '', '', 'Total number of parameters', 'Total FLOPS'],
-                                      ['Summary', '', '', '', '', '', '', self.num_params, total_FLOPS],
-                                      ['In units', '', '', '', '', '', '', '', str(self.total_FLOPS_in_unit)+' MFLOPS']
-                                      ],
+                                      ['Summary', '', '', '', '', '', '', num_params_str, total_FLOPS]],
                                      columns=['Layer Id', 'Layer', 'Type', 'Kernel Size', 'Stride',
                                               'Activation', 'Output Size', 'Number of Parameters',
                                               'FLOPS(forward pass)'])
-                display(pd.concat([layers_summary, total], ignore_index = True))
+                pd_layers = pd.concat([layers_summary, total], ignore_index = True)
+                if not isnotebook():
+                    display(pd_layers)
+                return pd_layers
             else:
-                display(self.summary)
+                if not isnotebook():
+                    display(self.summary)
+                return self.summary
         except ImportError:
-            print(self.summary)
+            if not isnotebook():
+                print(self.summary)
+            return self.summary
 
     def _repr_html_(self):
         return self.summary._repr_html_()
@@ -1260,10 +1299,15 @@ class Network(Layer):
         layers_name = [l.name for l in self.layers]
         for layer in layers:
             for anchor, shares in layer.items():
+                if anchor not in layers_name:
+                    raise DLPyError('{} is not in the model. Please check again.'.format(anchor))
                 if isinstance(shares, str):
                     shares = [shares]
                 for share in shares:
-                    idx_share = layers_name.index(share)
+                    try:
+                        idx_share = layers_name.index(share)
+                    except ValueError:
+                        raise DLPyError('{} is not in the model. Please check again.'.format(anchor))
                     self.layers[idx_share].shared_weights = anchor
 
     def save_to_astore(self, path = None, **kwargs):
