@@ -239,7 +239,7 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
     return model
 
 
-def ShuffleNetV2(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3, width=224, height=224,
+def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3, width=224, height=224,
                  norm_stds=(255*0.229, 255*0.224, 255*0.225), offsets=(255*0.485, 255*0.456, 255*0.406),
                  random_flip=None, random_crop=None, random_mutation=None, scale_factor=1.0,
                  num_shuffle_units=[3, 7, 3], bottleneck_ratio=1, block_act='identity'):
@@ -265,7 +265,7 @@ def ShuffleNetV2(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
         prefix = 'stage{}/block{}'.format(stage, block)
         bottleneck_channels = int(out_channels * bottleneck_ratio)
         if strides < 2:
-            inputs = Split(n_groups = 2, name = '{}/spl'.format(prefix))(inputs)
+            inputs = Split(n_destination_layers = 2, name = '{}/spl'.format(prefix))(inputs)
 
         x = Conv2d(bottleneck_channels, 1, stride = 1, act = 'identity', include_bias = False,
                    name = '{}/1x1conv_1'.format(prefix))(inputs)
