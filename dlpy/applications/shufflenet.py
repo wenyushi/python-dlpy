@@ -239,10 +239,10 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
     return model
 
 
-def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3, width=224, height=224,
+def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3, width=224, height=224, #scale=1.0/255,
                  norm_stds=(255*0.229, 255*0.224, 255*0.225), offsets=(255*0.485, 255*0.456, 255*0.406),
                  random_flip=None, random_crop=None, random_mutation=None, scale_factor=1.0,
-                 num_shuffle_units=[3, 7, 3], bottleneck_ratio=1, block_act='identity'):
+                 num_shuffle_units=[3, 7, 3], bottleneck_ratio=1, conv_init='XAVIER'):
     '''https://github.com/opconty/keras-shufflenetV2'''
     # def channel_split(x, name = ''):
     #     # equipartition
@@ -267,25 +267,25 @@ def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3,
         if strides < 2:
             inputs = Split(n_destination_layers = 2, name = '{}/spl'.format(prefix))(inputs)
 
-        x = Conv2d(bottleneck_channels, 1, stride = 1, act = 'identity', include_bias = False,
+        x = Conv2d(bottleneck_channels, 1, stride = 1, act = 'identity', include_bias = False, init = conv_init,
                    name = '{}/1x1conv_1'.format(prefix))(inputs)
         x = BN(act = 'relu', name = '{}/bn_1x1conv_1'.format(prefix))(x)
         x = GroupConv2d(x.shape[2], x.shape[2], width = 3, stride = strides, act = 'identity', include_bias = False,
-                        name = '{}/3x3dwconv'.format(prefix))(x)
+                        name = '{}/3x3dwconv'.format(prefix), init = conv_init)(x)
         x = BN(act = 'identity', name = '{}/bn_3x3dwconv'.format(prefix))(x)
         x = Conv2d(bottleneck_channels, 1, stride = 1, act = 'identity', include_bias = False,
-                   name = '{}/1x1conv_2'.format(prefix))(x)
+                   name = '{}/1x1conv_2'.format(prefix), init = conv_init)(x)
         x = BN(act = 'relu', name = '{}/bn_1x1conv_2'.format(prefix))(x)
 
         if strides < 2:
-            inputs = Pooling(1, 1, 1, name = '{}/split_pool'.format(prefix))(inputs)
+            inputs = Pooling(1, 1, 1, pool = 'MEAN', name = '{}/split_pool'.format(prefix))(inputs)
             ret = Concat(name = '{}/concat_1'.format(prefix))([x, inputs])
         else:
             s2 = GroupConv2d(inputs.shape[2], inputs.shape[2], 3, stride = 2, act = 'identity', include_bias = False,
-                             name = '{}/3x3dwconv_2'.format(prefix))(inputs)
+                             name = '{}/3x3dwconv_2'.format(prefix), init = conv_init)(inputs)
             s2 = BN(act = 'identity', name = '{}/bn_3x3dwconv_2'.format(prefix))(s2)
             s2 = Conv2d(bottleneck_channels, 1, stride = 1, act = 'identity', include_bias = False,
-                        name = '{}/1x1_conv_3'.format(prefix))(s2)
+                        name = '{}/1x1_conv_3'.format(prefix), init = conv_init)(s2)
             s2 = BN(act = 'relu', name = '{}/bn_1x1conv_3'.format(prefix))(s2)
             ret = Concat(name = '{}/concat_2'.format(prefix))([x, s2])
 
@@ -327,7 +327,7 @@ def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3,
 
     # create shufflenet architecture
     x = Conv2d(n_filters=out_channels_in_stage[0], width=3, height = 3, include_bias=False, stride=2,
-               act='relu', name='conv1')(inp)
+               act='relu', name='conv1', init = conv_init)(inp)
     x = Pooling(width = 2, height = 2, name='maxpool1')(x)
 
     # create stages containing shufflenet units beginning at stage 2
@@ -339,7 +339,7 @@ def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3,
         k = 1024
     else:
         k = 2048
-    x = Conv2d(k, width=1, height = 1, name='1x1conv5_out', act = 'identity', include_bias = False)(x)
+    x = Conv2d(k, width=1, height = 1, name='1x1conv5_out', act = 'identity', include_bias = False, init = conv_init)(x)
     x = BN(act = 'relu', name = 'bn_1x1conv5_out')(x)
 
     x = GlobalAveragePooling2D(name='global_avg_pool')(x)
