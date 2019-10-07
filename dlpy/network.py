@@ -24,7 +24,7 @@ from dlpy.layers import Layer
 from dlpy.utils import DLPyError, input_table_check, random_name, check_caslib, caslibify, get_server_path_sep, \
     underscore_to_camelcase, caslibify_context, isnotebook
 from .layers import InputLayer, Conv2d, Pooling, BN, Res, Concat, Dense, OutputLayer, Keypoints, Detection, Scale,\
-    Reshape, GroupConv2d, ChannelShuffle, RegionProposal, ROIPooling, FastRCNN, Conv2DTranspose, Recurrent
+    Reshape, GroupConv2d, ChannelShuffle, RegionProposal, ROIPooling, FastRCNN, Conv2DTranspose, Recurrent, Survival
 import dlpy.model
 import collections
 import pandas as pd
@@ -2538,6 +2538,30 @@ def extract_fastrcnn_layer(layer_table):
     rpn_layer_config['name'] = layer_table['_DLKey0_'].unique()[0]
 
     layer = FastRCNN(**rpn_layer_config)
+    return layer
+
+
+def extract_survival_layer(layer_table):
+    '''
+    Extract layer configuration from a survival layer table
+
+    Parameters
+    ----------
+    layer_table : table
+        Specifies the selection of table containing the information
+        for the layer.
+
+    Returns
+    -------
+    :class:`dict`
+        Options that can be passed to layer definition
+
+    '''
+    survival_layer_config = dict()
+
+    survival_layer_config['name'] = layer_table['_DLKey0_'].unique()[0]
+
+    layer = Survival(**survival_layer_config)
     return layer
 
 #TODO： add new layers to be extracted from table
