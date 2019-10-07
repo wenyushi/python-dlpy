@@ -270,9 +270,9 @@ def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3,
         x = Conv2d(bottleneck_channels, 1, stride = 1, act = 'identity', include_bias = False,
                    name = '{}/1x1conv_1'.format(prefix))(inputs)
         x = BN(act = 'relu', name = '{}/bn_1x1conv_1'.format(prefix))(x)
-        x = GroupConv2d(x.shape[2], x.shape[2], width = 3, stride = strides, include_bias = False,
+        x = GroupConv2d(x.shape[2], x.shape[2], width = 3, stride = strides, act = 'identity', include_bias = False,
                         name = '{}/3x3dwconv'.format(prefix))(x)
-        x = BN(act = 'relu', name = '{}/bn_3x3dwconv'.format(prefix))(x)
+        x = BN(act = 'identity', name = '{}/bn_3x3dwconv'.format(prefix))(x)
         x = Conv2d(bottleneck_channels, 1, stride = 1, act = 'identity', include_bias = False,
                    name = '{}/1x1conv_2'.format(prefix))(x)
         x = BN(act = 'relu', name = '{}/bn_1x1conv_2'.format(prefix))(x)
@@ -281,9 +281,9 @@ def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3,
             inputs = Pooling(1, 1, 1, name = '{}/split_pool'.format(prefix))(inputs)
             ret = Concat(name = '{}/concat_1'.format(prefix))([x, inputs])
         else:
-            s2 = GroupConv2d(inputs.shape[2], inputs.shape[2], 3, stride = 2, include_bias = False,
+            s2 = GroupConv2d(inputs.shape[2], inputs.shape[2], 3, stride = 2, act = 'identity', include_bias = False,
                              name = '{}/3x3dwconv_2'.format(prefix))(inputs)
-            s2 = BN(act = 'relu', name = '{}/bn_3x3dwconv_2'.format(prefix))(s2)
+            s2 = BN(act = 'identity', name = '{}/bn_3x3dwconv_2'.format(prefix))(s2)
             s2 = Conv2d(bottleneck_channels, 1, stride = 1, act = 'identity', include_bias = False,
                         name = '{}/1x1_conv_3'.format(prefix))(s2)
             s2 = BN(act = 'relu', name = '{}/bn_1x1conv_3'.format(prefix))(s2)
@@ -339,7 +339,8 @@ def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3,
         k = 1024
     else:
         k = 2048
-    x = Conv2d(k, width=1, height = 1, name='1x1conv5_out', act='relu')(x)
+    x = Conv2d(k, width=1, height = 1, name='1x1conv5_out', act = 'identity', include_bias = False)(x)
+    x = BN(act = 'relu', name = 'bn_1x1conv5_out')(x)
 
     x = GlobalAveragePooling2D(name='global_avg_pool')(x)
     x = OutputLayer(n = n_classes)(x)
