@@ -2554,6 +2554,8 @@ def layer_out_to_arrays(conn, layer_out_table, idx=0):
         for d in range(n_dims):
             shape.append(max(int(i.split('_')[3+d]) for i in layer_cols)+1)
         res.append({l: layer_out_df[layer_cols].values[0].reshape(shape)})
+
+    res = sorted(res, key = lambda k: int(list(k.keys())[0]))
     return res
 
 
