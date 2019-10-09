@@ -23,6 +23,7 @@ import sys
 import numpy as np
 import json
 import platform
+from dlpy.utils import DLPyError
 
 
 def check_monotonicity(history, columns, tolerance=0, decreasing=True):
@@ -76,6 +77,33 @@ def almost_match(history, benchmark, significant=4):
         # assert(history['key'] != len(value), 'The length of benchmark and history should be equal.')
         for actual, desired in zip(history[key], value):
             np.testing.assert_approx_equal(actual, desired, significant)
+
+
+def check_dlscore_astore_score_match(s, data_table, model_table, model_weights, **kwargs):
+    df = s.fetch(data_table, sastypes=False).Fetch
+    where_clause = ''  # the where clause to select one observation if _path_ exists.
+    if '_path_' in df.columns:
+        where_clause = '_path_ eq "{}"'.format(df.loc[0, '_path_'])
+        num_ob = s.numrows(dict(name=data_table, where=where_clause))
+        if num_ob < 1:
+            raise DLPyError('Something is wrong when selecting observation in check_dlscore_astore_score_match().'
+                            ' Please contact Wenyu.')
+    else:
+        raise DLPyError('{} doesn\'t contain _path_'.format(data_table))
+
+    s.dlscore(model=model_table, initWeights=model_weights,
+              table=dict(name=data_table, where=where_clause),
+              casout={'name': 'dlscore_results', 'replace': True}, **kwargs)
+
+    s.dlexportmodel(casout=dict(name='export', replace=True),
+                    initWeights=model_weights, modelTable=model_table)
+    s.score(rstore='export', table = dict(name=data_table, where=where_clause),
+            out=dict(name='astore_results', replace=True), **kwargs)
+
+    dlscore_np = s.fetch('dlscore_results').Fetch.values
+    score_np = s.fetch('astore_results').Fetch.values
+
+    np.testing.assert_array_equal(dlscore_np, score_np)
 
 
 def convert_to_notebook(table_test_file, save_to_folder, server='dlgrd009', port=13315):
@@ -153,7 +181,7 @@ if __name__ == '__main__':
     parser.add_argument('-sf', '--save_to_folder', help = 'Point to the directory where the jupyter notebook is stored.',
                         required = True, type = str)
     parser.add_argument('-s', '--server', help = 'machine name', default = 'dlgrd009', required = False, type = str)
-    parser.add_argument('-port', help = 'integer: port number', default = 13315, required = False)
+    parser.add_argument('-port', help = 'integer: port number', default = 13300, required = False)
 
     args = parser.parse_args()
     test_file = args.test_file
