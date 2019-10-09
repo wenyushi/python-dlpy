@@ -20,11 +20,12 @@
 
 try:
     import matplotlib.pyplot as plt
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError):
     pass
 import numpy as np
 from swat.cas.table import CASTable
-from .utils import random_name, image_blocksize, caslibify
+from .utils import random_name, image_blocksize, caslibify_context, get_server_path_sep
+from warnings import warn
 
 
 class ImageTable(CASTable):
@@ -165,8 +166,7 @@ class ImageTable(CASTable):
         return out
 
     @classmethod
-    def load_files(cls, conn, path, casout=None, columns=None,
-                   caslib=None, **kwargs):
+    def load_files(cls, conn, path, casout=None, columns=None, caslib=None, **kwargs):
 
         '''
 
@@ -204,25 +204,26 @@ class ImageTable(CASTable):
 
         if 'name' not in casout:
             casout['name'] = random_name()
+        with caslibify_context(conn, path, task = 'load') as (caslib_created, path_created):
 
-        if caslib is None:
-            caslib, path, tmp_caslib = caslibify(conn, path, task='load')
-        else:
-            tmp_caslib = False
+            if caslib is None:
+                caslib = caslib_created
+                path = path_created
 
-        if caslib is None and path is None:
-            print('Cannot create a caslib for the provided path. Please make sure that the path is accessible from'
-                  'the CAS Server. Please also check if there is a subpath that is part of an existing caslib')
+            if caslib is None and path is None:
+                print('Cannot create a caslib for the provided path. Please make sure that the path is accessible from'
+                      'the CAS Server. Please also check if there is a subpath that is part of an existing caslib')
 
-        conn.retrieve('image.loadimages', _messagelevel='error',
-                      casout=casout,
-                      distribution=dict(type='random'),
-                      recurse=True, labellevels=-1,
-                      path=path, caslib=caslib, **kwargs)
+            conn.retrieve('image.loadimages', _messagelevel='error',
+                          casout=casout,
+                          distribution=dict(type='random'),
+                          recurse=True, labellevels=-1,
+                          path=path, caslib=caslib, **kwargs)
 
+        sep_ = get_server_path_sep(conn)
         code=[]
         code.append('length _filename_0 varchar(*);')
-        code.append('_loc1 = LENGTH(_path_) - INDEX(REVERSE(_path_),\'/\')+2;')
+        code.append("_loc1 = LENGTH(_path_) - INDEX(REVERSE(_path_),'"+sep_+"')+2;")
         code.append('_filename_0 = SUBSTR(_path_,_loc1);')
         code = '\n'.join(code)
         column_names = ['_image_', '_label_', '_filename_0', '_id_']
@@ -237,10 +238,6 @@ class ImageTable(CASTable):
 
         out = cls(**casout)
         out.set_connection(conn)
-
-        # drop the temp caslib
-        if (caslib is not None) and tmp_caslib:
-            conn.retrieve('dropcaslib', _messagelevel='error', caslib=caslib)
 
         return out
 
@@ -328,7 +325,7 @@ class ImageTable(CASTable):
 
         return out
 
-    def show(self, nimages=5, ncol=8, randomize=False, figsize=None):
+    def show(self, nimages=5, ncol=8, randomize=False, figsize=None, where=None):
 
         '''
 
@@ -346,12 +343,27 @@ class ImageTable(CASTable):
             columns in the plots.
         randomize : bool, optional
             Specifies whether to randomly choose the images for display.
-        figsize: int, optional
+        figsize : int, optional
             Specifies the size of the fig that contains the image.
+        where : string, optional
+            Specifies the SAS Where clause for selecting images to be shown.
+            One example is as follows:
+            my_images.show(nimages=2, where='_id_ eq 57')
 
         '''
 
         nimages = min(nimages, len(self))
+        # put where clause to select images
+        self.params['where'] = where
+        # restrict the number of observations to be shown
+        try:
+            # we use numrows to check if where clause is valid
+            max_obs = self.numrows().numrows
+            nimages = min(max_obs, nimages)
+        except AttributeError:
+            self.params['where'] = None
+            warn("Where clause doesn't take effect, because encounter an error while processing where clause. "
+                 "Please check your where clause.")
 
         if randomize:
             temp_tbl = self.retrieve('image.fetchimages', _messagelevel='error',
@@ -365,6 +377,9 @@ class ImageTable(CASTable):
                                      sortby='random_index', to=nimages)
         else:
             temp_tbl = self._retrieve('image.fetchimages', to=nimages, image=self.running_image_column)
+
+        # remove the where clause
+        self.params['where'] = None
 
         if nimages > ncol:
             nrow = nimages // ncol + 1
@@ -706,7 +721,7 @@ class ImageTable(CASTable):
     def random_mutations(self, color_jitter=True, color_shift=True, darken=False,
                          horizontal_flip=True, invert_pixels=False, lighten=False, pyramid_down=False,
                          pyramid_up=False, rotate_left=False, rotate_right=False, sharpen=False,
-                         vertical_flip=True, inplace=True):
+                         vertical_flip=True, inplace=True, random_ratio=None):
 
         '''
 
@@ -739,7 +754,12 @@ class ImageTable(CASTable):
             Specifies whether to sharpen the input image.
         vertical_flip : bool, optional
             Specifies whether to vertically flip the input image.
-
+        inplace : bool, optional
+            Specifies if the input table will be used as the resulting table or not.
+            Default : True
+        random_ratio : double, optional
+            Specifies the ratio of the randomness. The smaller value would yield less
+            number of images in the resulting table.
         Returns
         -------
 
@@ -771,6 +791,7 @@ class ImageTable(CASTable):
                            image=self.running_image_column,
                            casout=dict(replace=True, **self.to_outtable_params()),
                            croplist=croplist,
+                           randomratio=random_ratio,
                            writerandomly=True)
 
             # The following code generate the latest file name according
@@ -808,7 +829,8 @@ class ImageTable(CASTable):
                                  rotate_right=rotate_right,
                                  sharpen=sharpen,
                                  vertical_flip=vertical_flip,
-                                 inplace=True)
+                                 inplace=True,
+                                 randomratio=random_ratio)
             return out
 
     @property
