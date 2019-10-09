@@ -100,6 +100,14 @@ def check_dlscore_astore_score_match(s, data_table, model_table, model_weights, 
 
     s.dlexportmodel(casout=dict(name='export', replace=True),
                     initWeights=model_weights, modelTable=model_table)
+
+    # enable gpu on astore
+    if 'gpu' in kwargs:
+        kwargs.pop('gpu')
+        kwargs['option'] = [dict(name = 'usegpu', value = '1'),
+                           dict(name = 'NDEVICES', value = 1),
+                           dict(name = 'DEVICE0', value = '0')]
+
     s.score(rstore='export', table = dict(name=data_table, where=where_clause),
             out=dict(name='astore_results', replace=True), **kwargs)
 
