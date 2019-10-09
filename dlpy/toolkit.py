@@ -23,7 +23,10 @@ import sys
 import numpy as np
 import json
 import platform
-from dlpy.utils import DLPyError
+try:
+    from utils import DLPyError
+except:
+    from .utils import DLPyError
 
 
 def check_monotonicity(history, columns, tolerance=0, decreasing=True):
