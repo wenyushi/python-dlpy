@@ -21,7 +21,7 @@
 import os
 try:
     import matplotlib.pyplot as plt
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError):
     pass
 import numpy as np
 import pandas as pd
