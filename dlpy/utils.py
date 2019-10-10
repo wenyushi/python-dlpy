@@ -1125,15 +1125,21 @@ def _convert_xml_annotation(filename, coord_type, resize, name_file = None):
     # if a xml is empty, just skip it.
     if object_ is None:
         in_file.close()
+        print('WARNING: There is no object in the annotation file {}.xml. The observation is ignored.'.format(filename))
+        return
+    size = root.find('size')
+    width = int(size.find('width').text)
+    height = int(size.find('height').text)
+    if width <= 0 or height <= 0:
+        in_file.close()
+        print('WARNING: Please check the annotation file, {}.xml, '
+              'in which either width or height is smaller than 0. The observation is ignored.'.format(filename))
         return
     # write in all classes
     if name_file:
         with open(name_file, 'r') as nf:
             line = nf.readlines()
             cls_list = [l.strip() for l in line]
-    size = root.find('size')
-    width = int(size.find('width').text)
-    height = int(size.find('height').text)
     out_file = open(filename + ".txt", 'w')  # write to test files
     for obj in root.iter('object'):
         cls = obj.find('name').text
@@ -1355,6 +1361,12 @@ def create_object_detection_table(conn, data_path, coord_type, output,
     conn.retrieve('loadactionset', _messagelevel = 'error', actionset = 'deepLearn')
     conn.retrieve('loadactionset', _messagelevel = 'error', actionset = 'transpose')
 
+    # get os path seperator
+    if server_type.startswith("lin") or server_type.startswith("osx"):
+        sep = '/'
+    else:
+        sep = '\\'
+
     # label variables, _ : category;
     yolo_var_name = ['_', '_x', '_y', '_width', '_height']
     coco_var_name = ['_', '_xmin', '_ymin', '_xmax', '_ymax']
@@ -1394,10 +1406,9 @@ def create_object_detection_table(conn, data_path, coord_type, output,
                 print(msg)
         else:
             print("NOTE: Images are processed.")
-
     with caslibify_context(conn, data_path, 'save') as (caslib, path_after_caslib):
         # find all of annotation files under the directory
-        label_files = conn.fileinfo(caslib = caslib, allfiles = True).FileInfo['Name'].values
+        label_files = conn.fileinfo(caslib = caslib, path = path_after_caslib, allfiles = True).FileInfo['Name'].values
         # if client and server are on different type of operation system, we assume user parse xml files and put
         # txt files in data_path folder. So skip get_txt_annotation()
         # parse xml or json files and create txt files
@@ -1406,7 +1417,6 @@ def create_object_detection_table(conn, data_path, coord_type, output,
 
         label_tbl_name = random_name('obj_det')
         # load all of txt files into cas server
-        label_files = conn.fileinfo(caslib = caslib, allfiles = True).FileInfo['Name'].values
         label_files = [x for x in label_files if x.endswith('.txt')]
         if len(label_files) == 0:
             raise DLPyError('Can not find any txt file under data_path.')
@@ -1414,6 +1424,8 @@ def create_object_detection_table(conn, data_path, coord_type, output,
         with sw.option_context(print_messages = False):
             for idx, filename in enumerate(label_files):
                 tbl_name = '{}_{}'.format(label_tbl_name, idx)
+                if path_after_caslib != '':
+                    filename = path_after_caslib + sep + filename
                 conn.retrieve('loadtable', caslib = caslib, path = filename,
                               casout = dict(name = tbl_name, replace = True),
                               importOptions = dict(fileType = 'csv', getNames = False,
@@ -1434,9 +1446,8 @@ def create_object_detection_table(conn, data_path, coord_type, output,
                 run;
                 '''.format(output, string_input_tbl_name)
     conn.runcode(code = fmt_code, _messagelevel = 'error')
-    cls_col_format_length = conn.columninfo(output).ColumnInfo.loc[0][3]
+    cls_col_format_length = conn.columninfo(output).ColumnInfo['RawLength'][0]  # max class name length
     cls_col_format_length = cls_col_format_length if cls_col_format_length >= len('NoObject') else len('NoObject')
-
     conn.altertable(name = output, columns = [dict(name = 'Var1', rename = var_name[0]),
                                               dict(name = 'Var2', rename = var_name[1]),
                                               dict(name = 'Var3', rename = var_name[2]),
@@ -2093,7 +2104,7 @@ def create_object_detection_table_no_xml(conn, data_path, coord_type, output, an
     if len(label_files) == 0:
         raise DLPyError('There is no annotation file in the annotation_path.')
 
-    with caslibify(conn, data_path, task='load') as (caslib, path_after_caslib):
+    with caslibify_context(conn, data_path, task='load') as (caslib, path_after_caslib):
         if caslib is None and path_after_caslib is None:
             print('Cannot create a caslib for the provided (i.e., '+data_path+') path. Please make sure that the '
                                                                               'path is accessible from'
@@ -2462,3 +2473,129 @@ class DLPyDict(collections.MutableMapping):
 
     def __str__(self):
         return str(self.__dict__)
+
+
+def display_segmentation(conn, table, annotation_parameters, num_plot, input_background = 0, n_col = 2,
+                         fig_size = None):
+    conn.retrieve('loadactionset', _messagelevel = 'error', actionset = 'image')
+
+    label_char_cols = [x for x in list(conn.CASTable(table).columns) if 'PredName' in x]
+    masks_cols = []
+    annotated_img = random_name('Annotated', 6)
+    annotations = []
+    rename_var = 'raw_image'
+
+    # select number of images to show
+    with sw.option_context(print_messages = False):
+        image_summary = conn.image.summarizeimages(table).Summary
+    width = image_summary.loc[0, 'minWidth']
+    height = image_summary.loc[0, 'minHeight']
+
+    convert_to_numeric_code = ""
+    for i, an_param in enumerate(annotation_parameters):
+        mask_cols = [x + 'num{}'.format(i) for x in label_char_cols]
+        class_name = an_param['class']
+        for x, y in zip(label_char_cols, mask_cols):
+            convert_to_numeric_code += "length {1} 2; if {0} = {2} then {1} = {2}; else {1} = {3};".format(x, y,
+                                                                                                           class_name,
+                                                                                                           input_background)
+        masks_cols.append(mask_cols)
+
+    with sw.option_context(print_messages = False):
+        flatten_masks_cols = [item for sublist in masks_cols for item in sublist]
+        conn.partition(table = dict(name = table, computedvars = flatten_masks_cols,
+                                    computedvarsprogram = convert_to_numeric_code),
+                       casout = dict(name = annotated_img, replace = 1))
+        conn.altertable(table = annotated_img, columns = [dict(name = '_image_', rename = rename_var)])
+    temp_vars = [rename_var]
+    for i, cols in enumerate(masks_cols):
+        renamed_dimension = '_dimension_{}'.format(i)
+        renamed_resolution = '_resolution_{}'.format(i)
+        renamed_image_format = '_imageFormat_{}'.format(i)
+        renamed_mask = 'mask_{}'.format(i)
+        color = annotation_parameters[i]['color']
+        transparency = annotation_parameters[i]['transparency']
+        annotation = dict(annotationparameters = dict(annotationType = 'segmentation',
+                                                      image = renamed_mask,
+                                                      dimension = renamed_dimension,
+                                                      resolution = renamed_resolution,
+                                                      imageFormat = renamed_image_format,
+                                                      colorMap = color, transparency = transparency,
+                                                      inputbackground = input_background))
+        copy_vars = [item for sublist in masks_cols[i + 1:] for item in sublist] + temp_vars
+        conn.condenseimages(table = annotated_img, height = height, width = width,
+                            casout = dict(name = annotated_img, replace = 1),
+                            copyvars = copy_vars, inputs = cols, numberofchannels = 'GRAY_SCALE_IMAGE')
+        # walk around to rename the decode meta data
+        conn.altertable(annotated_img, columns = [dict(name = '_image_', rename = renamed_mask),
+                                                  dict(name = '_dimension_', rename = renamed_dimension),
+                                                  dict(name = '_resolution_', rename = renamed_resolution),
+                                                  dict(name = '_imageFormat_', rename = renamed_image_format)])
+        annotations.append(annotation)
+        # update copy vars
+        temp_vars += [renamed_mask, renamed_dimension, renamed_resolution, renamed_image_format]
+    with sw.option_context(print_messages = False):
+        conn.annotateimages(images = dict(table = annotated_img, image = rename_var),
+                            casout = dict(name = annotated_img, replace = 1),
+                            annotations = annotations)
+    plot_helper(conn, annotated_img, num_plot, n_col, fig_size)
+    with sw.option_context(print_messages=False):
+        conn.table.droptable(annotated_img)
+
+
+def layer_out_to_arrays(conn, layer_out_table, idx=0):
+    # only support wide format
+    res = []
+    layer_out_df = conn.fetch(layer_out_table, from_=idx+1, to=-1, sastypes=False).Fetch
+    array_cols = [i for i in conn.columninfo(layer_out_table).ColumnInfo.Column.values if i.startswith('_LayerAct_')]
+    layer_id = list(set([col.split('_')[2] for col in array_cols])) # ['', 'LayerAct', '20', '0', '0', '1', '']
+    for l in layer_id:
+        layer_cols = [i for i in array_cols if i.startswith('_LayerAct_'+str(l))]
+        col_s = layer_cols[0].split('_')
+        n_dims = len(col_s)-4
+        shape = [] # chw
+        for d in range(n_dims):
+            shape.append(max(int(i.split('_')[3+d]) for i in layer_cols)+1)
+        res.append({l: layer_out_df[layer_cols].values[0].reshape(shape)})
+
+    res = sorted(res, key = lambda k: int(list(k.keys())[0]))
+    return res
+
+
+def plot_helper(conn, image_table, num_plot, n_col, fig_size=None):
+    with sw.option_context(print_messages = False):
+        num_plot = min(conn.numrows(image_table).numrows, num_plot)
+        fetch_images_data = conn.image.fetchImages(imageTable = {'name': image_table},
+                                                   to = num_plot,
+                                                   fetchImagesVars = ['_image_', '_path_'])
+
+    if num_plot > n_col:
+        n_row = num_plot // n_col + 1
+    else:
+        n_row = 1
+        n_col = num_plot
+
+    n_col_m = n_col
+    if n_col_m < 1:
+        n_col_m += 1
+
+    n_row_m = n_row
+    if n_row < 1:
+        n_row_m += 1
+
+    if fig_size is None:
+        fig_size = (16, 16 // n_col_m * n_row_m)
+
+    fig = plt.figure(figsize = fig_size)
+
+    k = 1
+
+    for i in range(num_plot):
+        image = fetch_images_data['Images']['Image'][i]
+        ax = fig.add_subplot(n_row, n_col, k)
+        plt.imshow(image)
+        if '_path_' in fetch_images_data['Images'].columns:
+            plt.title(str(os.path.basename(fetch_images_data['Images']['_path_'].loc[i])))
+        k = k + 1
+        plt.xticks([]), plt.yticks([])
+    plt.show()
