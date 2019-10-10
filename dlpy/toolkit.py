@@ -82,12 +82,12 @@ def almost_match(history, benchmark, significant=4):
             np.testing.assert_approx_equal(actual, desired, significant)
 
 
-def check_dlscore_astore_score_match(s, data_table, model_table, model_weights, **kwargs):
+def check_dlscore_astore_score_match(s, data_table, model_table, model_weights, decimal=0.001, **kwargs):
     df = s.fetch(data_table, sastypes=False).Fetch
     where_clause = ''  # the where clause to select one observation if _path_ exists.
     if '_path_' in df.columns:
         where_clause = '_path_ eq "{}"'.format(df.loc[0, '_path_'])
-        num_ob = s.numrows(dict(name=data_table, where=where_clause))
+        num_ob = s.numrows(dict(name=data_table, where=where_clause)).numrows
         if num_ob < 1:
             raise DLPyError('Something is wrong when selecting observation in check_dlscore_astore_score_match().'
                             ' Please contact Wenyu.')
@@ -104,17 +104,47 @@ def check_dlscore_astore_score_match(s, data_table, model_table, model_weights, 
     # enable gpu on astore
     if 'gpu' in kwargs:
         kwargs.pop('gpu')
-        kwargs['option'] = [dict(name = 'usegpu', value = '1'),
-                           dict(name = 'NDEVICES', value = 1),
-                           dict(name = 'DEVICE0', value = '0')]
+        kwargs['options'] = [dict(name='usegpu', value='1'),
+                            dict(name='NDEVICES', value=1),
+                            dict(name='DEVICE0', value='0')]
+        kwargs['nthreads'] = 1
 
-    s.score(rstore='export', table = dict(name=data_table, where=where_clause),
+    s.score(rstore='export', table=dict(name=data_table, where=where_clause),
             out=dict(name='astore_results', replace=True), **kwargs)
 
-    dlscore_np = s.fetch('dlscore_results').Fetch.values
-    score_np = s.fetch('astore_results').Fetch.values
+    dlscore_df = s.fetch('dlscore_results').Fetch
+    score_df = s.fetch('astore_results').Fetch
 
-    np.testing.assert_array_equal(dlscore_np, score_np)
+    layers_info = s.fetch(dict(name=model_table, where=' _DLKey1_ eq "layertype"'), to=10000).Fetch
+
+    task_layer_numval = [5, 11, 13, 23, 26]  # output, keypoints, rpn, clustering
+    task_layer_indices = layers_info[layers_info['_DLNumVal_'].isin(task_layer_numval)]['_DLLayerID_'].values
+
+    output_layer_indices = layers_info[layers_info['_DLNumVal_']==5]['_DLLayerID_'].values
+
+    drop_cols = []  # drop the columns which are not in astore casout
+    if task_layer_indices.shape[0] > 1:
+        for i in output_layer_indices:
+            drop_cols.append('_DL_PredLevel{}_'.format(int(i)))
+            drop_cols.append('_DL_PredP{}_'.format(int(i)))
+    else:
+        # single task
+        if output_layer_indices.shape[0] == 1:
+            drop_cols.append('_DL_PredLevel_')
+            drop_cols.append('_DL_PredP_')
+
+    keep = [c for c in dlscore_df.columns if c not in drop_cols]
+
+    dlscore_np = dlscore_df[keep].values
+    score_np = score_df.values
+
+    for v1, v2 in zip(dlscore_np[0], score_np[0]):
+        if type(v1) in [float, int]:
+            np.testing.assert_almost_equal(v1, v2, decimal=decimal)
+        elif type(v1) == str:
+            np.testing.assert_string_equal(v1, v2)
+        else:
+            raise DLPyError('Unexpect error. Contact Wenyu.')
 
 
 def convert_to_notebook(table_test_file, save_to_folder, server='dlgrd009', port=13315):
