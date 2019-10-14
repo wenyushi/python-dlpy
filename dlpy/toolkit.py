@@ -85,14 +85,19 @@ def almost_match(history, benchmark, significant=4):
 def check_dlscore_astore_score_match(s, data_table, model_table, model_weights, decimal=0.001, **kwargs):
     df = s.fetch(data_table, sastypes=False).Fetch
     where_clause = ''  # the where clause to select one observation if _path_ exists.
+    where_column = ''
     if '_path_' in df.columns:
-        where_clause = '_path_ eq "{}"'.format(df.loc[0, '_path_'])
-        num_ob = s.numrows(dict(name=data_table, where=where_clause)).numrows
-        if num_ob < 1:
-            raise DLPyError('Something is wrong when selecting observation in check_dlscore_astore_score_match().'
-                            ' Please contact Wenyu.')
+        where_column = '_path_'
+    elif '_filename_0'in df.columns:
+        where_column = '_filename_0'
     else:
-        raise DLPyError('{} doesn\'t contain _path_'.format(data_table))
+        raise DLPyError('{} doesn\'t contain _path_'.format(['_path', '_filename_0']))
+
+    where_clause = '{} eq "{}"'.format(where_column, df.loc[0, where_column])
+    num_ob = s.numrows(dict(name=data_table, where=where_clause)).numrows
+    if num_ob < 1:
+        raise DLPyError('Something is wrong when selecting observation in check_dlscore_astore_score_match().'
+                        ' Please contact Wenyu.')
 
     s.dlscore(model=model_table, initWeights=model_weights,
               table=dict(name=data_table, where=where_clause),
@@ -117,21 +122,33 @@ def check_dlscore_astore_score_match(s, data_table, model_table, model_weights, 
 
     layers_info = s.fetch(dict(name=model_table, where=' _DLKey1_ eq "layertype"'), to=10000).Fetch
 
-    task_layer_numval = [5, 11, 13, 23, 26]  # output, keypoints, rpn, clustering
+    task_layer_numval = [5, 11, 13, 19, 23, 26]  # output, keypoints, segmentation, rpn, clustering
     task_layer_indices = layers_info[layers_info['_DLNumVal_'].isin(task_layer_numval)]['_DLLayerID_'].values
 
-    output_layer_indices = layers_info[layers_info['_DLNumVal_']==5]['_DLLayerID_'].values
+    output_layer_indices = layers_info[layers_info['_DLNumVal_'] == 5]['_DLLayerID_'].values
+    seg_layer_indices = layers_info[layers_info['_DLNumVal_'] == 19]['_DLLayerID_'].values
 
     drop_cols = []  # drop the columns which are not in astore casout
     if task_layer_indices.shape[0] > 1:
         for i in output_layer_indices:
             drop_cols.append('_DL_PredLevel{}_'.format(int(i)))
             drop_cols.append('_DL_PredP{}_'.format(int(i)))
-    else:
+        for i in seg_layer_indices:
+            # todo check columns to be removed
+            drop_cols.append('_DL_Pixel_Acc_')
+            drop_cols.append('_DL_Mean_Acc_')
+            drop_cols.append('_DL_Mean_IU_')
+            drop_cols.append('_DL_Freq_IU_')
+    elif output_layer_indices.shape[0] > 1:
         # single task
         if output_layer_indices.shape[0] == 1:
             drop_cols.append('_DL_PredLevel_')
             drop_cols.append('_DL_PredP_')
+    elif seg_layer_indices.shape[0] > 1:
+        drop_cols.append('_DL_Pixel_Acc_')
+        drop_cols.append('_DL_Mean_Acc_')
+        drop_cols.append('_DL_Mean_IU_')
+        drop_cols.append('_DL_Freq_IU_')
 
     keep = [c for c in dlscore_df.columns if c not in drop_cols]
 
@@ -145,6 +162,8 @@ def check_dlscore_astore_score_match(s, data_table, model_table, model_weights, 
             np.testing.assert_string_equal(v1, v2)
         else:
             raise DLPyError('Unexpect error. Contact Wenyu.')
+
+    print('dlscore and astore.score are matching.')
 
 
 def convert_to_notebook(table_test_file, save_to_folder, server='dlgrd009', port=13315):
