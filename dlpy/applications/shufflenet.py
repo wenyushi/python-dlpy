@@ -83,7 +83,7 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
         Default: [3, 7, 3]
     bottleneck_ratio : double
         bottleneck ratio implies the ratio of bottleneck channels to output channels.
-        For example, bottleneck ratio = 1 : 4 means the output feature map is 4 times
+        For example, bottleneck ratio=1 : 4 means the output feature map is 4 times
         the width of the bottleneck feature map.
     groups: int
         Specifies the number of groups per channel
@@ -102,7 +102,7 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
 
     '''
 
-    def _block(x, channel_map, bottleneck_ratio, repeat = 1, groups = 1, stage = 1):
+    def _block(x, channel_map, bottleneck_ratio, repeat=1, groups=1, stage=1):
         """
         creates a bottleneck block
 
@@ -125,19 +125,19 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
         -------
         """
         x = _shuffle_unit(x, in_channels = channel_map[stage - 2],
-                          out_channels = channel_map[stage - 1], strides = 2,
+                          out_channels = channel_map[stage - 1], strides=2,
                           groups = groups, bottleneck_ratio = bottleneck_ratio,
-                          stage = stage, block = 1)
+                          stage = stage, block=1)
 
         for i in range(1, repeat + 1):
             x = _shuffle_unit(x, in_channels = channel_map[stage - 1],
-                              out_channels = channel_map[stage - 1], strides = 1,
+                              out_channels = channel_map[stage - 1], strides=1,
                               groups = groups, bottleneck_ratio = bottleneck_ratio,
                               stage = stage, block = (i + 1))
 
         return x
 
-    def _shuffle_unit(inputs, in_channels, out_channels, groups, bottleneck_ratio, strides = 2, stage = 1, block = 1):
+    def _shuffle_unit(inputs, in_channels, out_channels, groups, bottleneck_ratio, strides=2, stage=1, block=1):
         """
         create a shuffle unit
 
@@ -221,7 +221,7 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
     # create shufflenet architecture
     x = Conv2d(out_channels_in_stage[0], 3, include_bias=False, stride=2, act="identity", name="conv1")(inp)
     x = BN(act='relu', name = 'bn1')(x)
-    x = Pooling(width=3, height=3, stride=2, name="maxpool1")(x)
+    x = Pooling(width=3, height=3, stride=2, padding=1, name="maxpool1")(x)
 
     # create stages containing shufflenet units beginning at stage 2
     for stage in range(0, len(num_shuffle_units)):
@@ -244,12 +244,12 @@ def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3,
                  random_flip=None, random_crop=None, random_mutation=None, scale_factor=1.0,
                  stages_repeats=[4, 8, 4], stages_out_channels=[24, 176, 352, 704, 1024], conv_init='XAVIER'):
     '''https://github.com/opconty/keras-shufflenetV2'''
-    # def channel_split(x, name = ''):
+    # def channel_split(x, name=''):
     #     # equipartition
     #     in_channles = x.shape.as_list()[-1]
     #     ip = in_channles // 2
-    #     c_hat = Lambda(lambda z: z[:, :, :, 0:ip], name = '%s/sp%d_slice' % (name, 0))(x)
-    #     c = Lambda(lambda z: z[:, :, :, ip:], name = '%s/sp%d_slice' % (name, 1))(x)
+    #     c_hat = Lambda(lambda z: z[:, :, :, 0:ip], name='%s/sp%d_slice' % (name, 0))(x)
+    #     c = Lambda(lambda z: z[:, :, :, ip:], name='%s/sp%d_slice' % (name, 1))(x)
     #     return c_hat, c
     #
     # def channel_shuffle(x):
@@ -260,46 +260,45 @@ def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3,
     #     x = K.reshape(x, [-1, height, width, channels])
     #     return x
 
-    def shuffle_unit(inputs, out_channels, strides = 2, stage = 1, block = 1):
+    def shuffle_unit(inputs, out_channels, strides=2, stage=1, block=1):
 
         prefix = 'stage{}/block{}'.format(stage, block)
         if strides < 2:
-            inputs = Split(n_destination_layers = 2, name = '{}/spl'.format(prefix))(inputs)
+            inputs = Split(n_destination_layers=2, name='{}/spl'.format(prefix))(inputs)
 
         out_channels = out_channels // 2
 
-        x = Conv2d(out_channels, 1, stride = 1, act = 'identity', include_bias = False, init = conv_init,
-                   name = '{}/1x1conv_1'.format(prefix))(inputs)
-        x = BN(act = 'relu', name = '{}/bn_1x1conv_1'.format(prefix))(x)
-        x = GroupConv2d(x.shape[2], x.shape[2], width = 3, stride = strides, act = 'identity', include_bias = False,
-                        name = '{}/3x3dwconv'.format(prefix), init = conv_init)(x)
-        x = BN(act = 'identity', name = '{}/bn_3x3dwconv'.format(prefix))(x)
-        x = Conv2d(out_channels, 1, stride = 1, act = 'identity', include_bias = False,
-                   name = '{}/1x1conv_2'.format(prefix), init = conv_init)(x)
-        x = BN(act = 'relu', name = '{}/bn_1x1conv_2'.format(prefix))(x)
+        x = Conv2d(out_channels, 1, stride=1, act='identity', include_bias=False, init=conv_init,
+                   name='{}/1x1conv_1'.format(prefix))(inputs)
+        x = BN(act='relu', name='{}/bn_1x1conv_1'.format(prefix))(x)
+        x = GroupConv2d(x.shape[2], x.shape[2], width = 3, stride = strides, act='identity', include_bias=False,
+                        name='{}/3x3dwconv'.format(prefix), init=conv_init)(x)
+        x = BN(act='identity', name='{}/bn_3x3dwconv'.format(prefix))(x)
+        x = Conv2d(out_channels, 1, stride=1, act='identity', include_bias=False,
+                   name='{}/1x1conv_2'.format(prefix), init=conv_init)(x)
+        x = BN(act='relu', name='{}/bn_1x1conv_2'.format(prefix))(x)
 
         if strides < 2:
-            inputs = Pooling(1, 1, 1, pool = 'MAX', name = '{}/split_pool'.format(prefix))(inputs)
-            inputs = Pooling(1, 1, 1, pool = 'MAX', name = '{}/split_pool2'.format(prefix))(inputs)
-            ret = Concat(name = '{}/concat_1'.format(prefix))([x, inputs])
+            inputs = Pooling(1, 1, 1, pool='MAX', name='{}/split_pool'.format(prefix))(inputs)
+            ret = Concat(name='{}/concat_1'.format(prefix))([x, inputs])
         else:
-            s2 = GroupConv2d(inputs.shape[2], inputs.shape[2], 3, stride = 2, act = 'identity', include_bias = False,
-                             name = '{}/3x3dwconv_2'.format(prefix), init = conv_init)(inputs)
-            s2 = BN(act = 'identity', name = '{}/bn_3x3dwconv_2'.format(prefix))(s2)
-            s2 = Conv2d(out_channels, 1, stride = 1, act = 'identity', include_bias = False,
-                        name = '{}/1x1_conv_3'.format(prefix), init = conv_init)(s2)
-            s2 = BN(act = 'relu', name = '{}/bn_1x1conv_3'.format(prefix))(s2)
-            ret = Concat(name = '{}/concat_2'.format(prefix))([x, s2])
+            s2 = GroupConv2d(inputs.shape[2], inputs.shape[2], 3, stride=2, act='identity', include_bias=False,
+                             name='{}/3x3dwconv_2'.format(prefix), init=conv_init)(inputs)
+            s2 = BN(act='identity', name='{}/bn_3x3dwconv_2'.format(prefix))(s2)
+            s2 = Conv2d(out_channels, 1, stride=1, act='identity', include_bias=False,
+                        name='{}/1x1_conv_3'.format(prefix), init=conv_init)(s2)
+            s2 = BN(act='relu', name='{}/bn_1x1conv_3'.format(prefix))(s2)
+            ret = Concat(name='{}/concat_2'.format(prefix))([x, s2])
 
-        ret = ChannelShuffle(n_groups=2, name = '{}/channel_shuffle'.format(prefix))(ret)
+        ret = ChannelShuffle(n_groups=2, name='{}/channel_shuffle'.format(prefix))(ret)
 
         return ret
 
-    def block(x, channel_map, repeat = 1, stage = 1):
-        x = shuffle_unit(x, out_channels = channel_map[stage - 1], strides = 2,  stage = stage, block = 1)
+    def block(x, channel_map, repeat=1, stage=1):
+        x = shuffle_unit(x, out_channels = channel_map[stage - 1], strides=2, stage = stage, block=1)
 
         for i in range(1, repeat):
-            x = shuffle_unit(x, out_channels = channel_map[stage - 1], strides = 1, stage = stage, block = (1 + i))
+            x = shuffle_unit(x, out_channels = channel_map[stage - 1], strides=1, stage = stage, block = (1 + i))
 
         return x
 
@@ -310,20 +309,22 @@ def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3,
 
     parameters = locals()
     input_parameters = get_layer_options(input_layer_options, parameters)
-    inp = Input(**input_parameters, name = 'data')
+    inp = Input(**input_parameters, name='data')
 
     # create shufflenet architecture
     x = Conv2d(n_filters=stages_out_channels[0], width=3, height = 3, include_bias=False, stride=2,
-               act='relu', name='conv1', init = conv_init)(inp)
-    x = Pooling(width = 2, height = 2, name='maxpool1')(x)
+               act='relu', name='conv1', init=conv_init)(inp)
+    x = BN(act='relu', name='bn1')(x)
+    x = Pooling(width=3, height=3, stride=2, padding=1, name='maxpool1')(x)
 
     # create stages containing shufflenet units beginning at stage 2
     for stage in range(len(stages_repeats)): # 0, 1, 2
         repeat = stages_repeats[stage] # 4, 8, 4
         x = block(x, stages_out_channels, repeat=repeat, stage=stage + 2)  # 2, 3, 4
 
-    x = Conv2d(stages_out_channels[-1], width=1, height = 1, name='1x1conv5_out', act = 'identity', include_bias = False, init = conv_init)(x)
-    x = BN(act = 'relu', name = 'bn_1x1conv5_out')(x)
+    x = Conv2d(stages_out_channels[-1], width=1, height=1, name='1x1conv5_out', act='identity',
+               include_bias=False, init=conv_init)(x)
+    x = BN(act='relu', name='bn_1x1conv5_out')(x)
 
     x = GlobalAveragePooling2D(name='global_avg_pool')(x)
     x = OutputLayer(n = n_classes)(x)
