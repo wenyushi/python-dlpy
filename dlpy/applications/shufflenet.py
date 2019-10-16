@@ -313,7 +313,7 @@ def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3,
 
     # create shufflenet architecture
     x = Conv2d(n_filters=stages_out_channels[0], width=3, height = 3, include_bias=False, stride=2,
-               act='relu', name='conv1', init=conv_init)(inp)
+               act='identity', name='conv1', init=conv_init)(inp)
     x = BN(act='relu', name='bn1')(x)
     x = Pooling(width=3, height=3, stride=2, padding=1, name='maxpool1')(x)
 
