@@ -23,6 +23,7 @@ import sys
 import numpy as np
 import json
 import platform
+import re
 try:
     from utils import DLPyError
 except:
@@ -166,6 +167,64 @@ def check_dlscore_astore_score_match(s, data_table, model_table, model_weights, 
     print('dlscore and astore.score are matching.')
 
 
+def create_smp_mpp_cpu_gpu_tests(table_test_file):
+    import_from = os.path.splitext(os.path.basename(table_test_file))[0]
+    dirname = os.path.dirname(table_test_file)
+    if import_from[0] != 'p':
+        raise DLPyError('Only support python test script.')
+    with open(table_test_file) as f_in:
+        test_to_create = []
+        if import_from[1] == 's':
+            test_to_create.append(import_from.replace('ps', 'pm'))
+            if import_from.find('gpu') > -1:
+                test_to_create.append(import_from.replace('gpu', 'bas'))
+                test_to_create.append(import_from.replace('gpu', 'bas').replace('ps', 'pm'))
+            else:
+                test_to_create.append(import_from.replace('bas', 'gpu'))
+                test_to_create.append(import_from.replace('bas', 'gpu').replace('ps', 'pm'))
+        elif import_from[1] == 'm':
+            test_to_create.append(import_from.replace('pm', 'ps'))
+            if import_from.find('gpu') > -1:
+                test_to_create.append(import_from.replace('gpu', 'bas'))
+                test_to_create.append(import_from.replace('gpu', 'bas').replace('pm', 'ps'))
+            else:
+                test_to_create.append(import_from.replace('bas', 'gpu'))
+                test_to_create.append(import_from.replace('bas', 'gpu').replace('pm', 'ps'))
+
+        for test in test_to_create:
+            out = []
+            for l in f_in.readlines():
+                l = l.replace(import_from, test)
+
+                if test[1] == 'm':
+                    insensitive_smp = re.compile(re.escape('smp'), re.IGNORECASE)
+                    l = insensitive_smp.sub('MPP', l)
+                if test[1] == 's':
+                    insensitive_mpp = re.compile(re.escape('mpp'), re.IGNORECASE)
+                    l = insensitive_mpp.sub('SMP', l)
+                if test.find('gpu') > -1:
+                    insensitive_cpu = re.compile(re.escape('cpu'), re.IGNORECASE)
+                    l = insensitive_cpu.sub('GPU', l)
+                if test.find('bas') > -1:
+                    insensitive_cpu = re.compile(re.escape('gpu'), re.IGNORECASE)
+                    l = insensitive_cpu.sub('CPU', l)
+
+                out.append(l)
+                if l == '\n':
+                    f_in.seek(0)
+                    break
+            import_string = ['#-----------------------------------------#\n',
+                             '#   import program                        #\n',
+                             '#-----------------------------------------#\n',
+                             'import {}\n'.format(import_from)
+                             ]
+            out = out + import_string
+
+            with open(os.path.join(dirname, test+'.py'), "w") as out_file:
+                for line in out:
+                    out_file.write(line)
+
+
 def convert_to_notebook(table_test_file, save_to_folder, server='dlgrd009', port=13315):
     '''
     Convert Castest table test to jupyter notebook.
@@ -186,62 +245,62 @@ def convert_to_notebook(table_test_file, save_to_folder, server='dlgrd009', port
     filename = os.path.split(table_test_file)
     func_name = filename[1].split('.')[0]
     needles = ['def', func_name]
-    f_in = open(table_test_file)
-    data = f_in.readlines()
-    for i, line in enumerate(data):
-        if line.startswith('def'):
-            pattern_line_num['def'] = i
-        if line.startswith(func_name):
-            pattern_line_num[func_name] = i
+    with open(table_test_file) as f_in:
+        data = f_in.readlines()
+        for i, line in enumerate(data):
+            if line.startswith('def'):
+                pattern_line_num['def'] = i
+            if line.startswith(func_name):
+                pattern_line_num[func_name] = i
 
 
-    pre_func_code = [line for line in data[:pattern_line_num['def']]
-                     if not (line.startswith('from connect import *') or line.startswith('s = connect()') or
-                             line.startswith('ast(s)'))]
-    ast_lib_code = ["from swat import *\n",
-        "s = CAS('{}.unx.sas.com', {})\n".format(server, port),
-        "s.table.addcaslib(activeonadd=False, datasource={'srctype':'path'}, name='ast', path='/dept/ast/data', subdirectories=True)"]
-    func_code = [line[4:] for line in data[pattern_line_num['def']+1: pattern_line_num[func_name]-3]]
+        pre_func_code = [line for line in data[:pattern_line_num['def']]
+                         if not (line.startswith('from connect import *') or line.startswith('s = connect()') or
+                                 line.startswith('ast(s)'))]
+        ast_lib_code = ["from swat import *\n",
+            "s = CAS('{}.unx.sas.com', {})\n".format(server, port),
+            "s.table.addcaslib(activeonadd=False, datasource={'srctype':'path'}, name='ast', path='/dept/ast/data', subdirectories=True)"]
+        func_code = [line[4:] for line in data[pattern_line_num['def']+1: pattern_line_num[func_name]-3]]
 
-    notebook_dict = {"cells": [],
-                     "metadata": {},
-                     "nbformat": 4,
-                     "nbformat_minor": 2}
+        notebook_dict = {"cells": [],
+                         "metadata": {},
+                         "nbformat": 4,
+                         "nbformat_minor": 2}
 
-    notebook_dict["cells"] = [{"cell_type": "code",
-                               "metadata": {},
-                               "execution_count": 1,
-                               "outputs": [],
-                               "source": pre_func_code},
-                              {"cell_type": "code",
-                               "metadata": {},
-                               "execution_count": 2,
-                               "outputs": [],
-                               "source": ast_lib_code},
-                              {"cell_type": "code",
-                               "metadata": {},
-                               "execution_count": 3,
-                               "outputs": [],
-                               "source": func_code}
-                              ]
-    if platform.system() == 'Windows':
-        save_path = r"{}\{}.ipynb".format(save_to_folder, func_name)
-    else:
-        save_path = "{}/{}.ipynb".format(save_to_folder, func_name)
+        notebook_dict["cells"] = [{"cell_type": "code",
+                                   "metadata": {},
+                                   "execution_count": 1,
+                                   "outputs": [],
+                                   "source": pre_func_code},
+                                  {"cell_type": "code",
+                                   "metadata": {},
+                                   "execution_count": 2,
+                                   "outputs": [],
+                                   "source": ast_lib_code},
+                                  {"cell_type": "code",
+                                   "metadata": {},
+                                   "execution_count": 3,
+                                   "outputs": [],
+                                   "source": func_code}
+                                  ]
+        if platform.system() == 'Windows':
+            save_path = r"{}\{}.ipynb".format(save_to_folder, func_name)
+        else:
+            save_path = "{}/{}.ipynb".format(save_to_folder, func_name)
 
-    with open(save_path, "w") as outfile:
-        json.dump(notebook_dict, outfile, indent=4, separators=(',', ': '))
+        with open(save_path, "w") as outfile:
+            json.dump(notebook_dict, outfile, indent=4, separators=(',', ': '))
 
 
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('-tf', '--test_file', help = 'Point to the table test file to be converted.',
-                        required = True, type = str)
-    parser.add_argument('-sf', '--save_to_folder', help = 'Point to the directory where the jupyter notebook is stored.',
-                        required = True, type = str)
-    parser.add_argument('-s', '--server', help = 'machine name', default = 'dlgrd009', required = False, type = str)
-    parser.add_argument('-port', help = 'integer: port number', default = 13300, required = False)
+    parser.add_argument('-tf', '--test_file', help='Point to the table test file to be converted.',
+                        required=True, type=str)
+    parser.add_argument('-sf', '--save_to_folder', help='Point to the directory where the jupyter notebook is stored.',
+                        required=True, type=str)
+    parser.add_argument('-s', '--server', help='machine name', default='dlgrd009', required=False, type=str)
+    parser.add_argument('-port', help='integer: port number', default=13300, required=False)
 
     args = parser.parse_args()
     test_file = args.test_file
