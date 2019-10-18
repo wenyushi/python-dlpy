@@ -172,27 +172,28 @@ def create_smp_mpp_cpu_gpu_tests(table_test_file):
     dirname = os.path.dirname(table_test_file)
     if import_from[0] != 'p':
         raise DLPyError('Only support python test script.')
-    with open(table_test_file) as f_in:
-        test_to_create = []
-        if import_from[1] == 's':
-            test_to_create.append(import_from.replace('ps', 'pm'))
-            if import_from.find('gpu') > -1:
-                test_to_create.append(import_from.replace('gpu', 'bas'))
-                test_to_create.append(import_from.replace('gpu', 'bas').replace('ps', 'pm'))
-            else:
-                test_to_create.append(import_from.replace('bas', 'gpu'))
-                test_to_create.append(import_from.replace('bas', 'gpu').replace('ps', 'pm'))
-        elif import_from[1] == 'm':
-            test_to_create.append(import_from.replace('pm', 'ps'))
-            if import_from.find('gpu') > -1:
-                test_to_create.append(import_from.replace('gpu', 'bas'))
-                test_to_create.append(import_from.replace('gpu', 'bas').replace('pm', 'ps'))
-            else:
-                test_to_create.append(import_from.replace('bas', 'gpu'))
-                test_to_create.append(import_from.replace('bas', 'gpu').replace('pm', 'ps'))
 
-        for test in test_to_create:
-            out = []
+    test_to_create = []
+    if import_from[1] == 's':
+        test_to_create.append(import_from.replace('ps', 'pm'))
+        if import_from.find('gpu') > -1:
+            test_to_create.append(import_from.replace('gpu', 'bas'))
+            test_to_create.append(import_from.replace('gpu', 'bas').replace('ps', 'pm'))
+        else:
+            test_to_create.append(import_from.replace('bas', 'gpu'))
+            test_to_create.append(import_from.replace('bas', 'gpu').replace('ps', 'pm'))
+    elif import_from[1] == 'm':
+        test_to_create.append(import_from.replace('pm', 'ps'))
+        if import_from.find('gpu') > -1:
+            test_to_create.append(import_from.replace('gpu', 'bas'))
+            test_to_create.append(import_from.replace('gpu', 'bas').replace('pm', 'ps'))
+        else:
+            test_to_create.append(import_from.replace('bas', 'gpu'))
+            test_to_create.append(import_from.replace('bas', 'gpu').replace('pm', 'ps'))
+
+    for test in test_to_create:
+        out = []
+        with open(table_test_file) as f_in:
             for l in f_in.readlines():
                 l = l.replace(import_from, test)
 
@@ -210,8 +211,7 @@ def create_smp_mpp_cpu_gpu_tests(table_test_file):
                     l = insensitive_cpu.sub('CPU', l)
 
                 out.append(l)
-                if l == '\n':
-                    f_in.seek(0)
+                if l in ['\n', '\r\n']:
                     break
             import_string = ['#-----------------------------------------#\n',
                              '#   import program                        #\n',
