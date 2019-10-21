@@ -23,7 +23,7 @@ from .mobilenet import *
 from .yolo import *
 from .densenet import *
 from .darknet import Darknet, Darknet_Reference
-from .shufflenet import ShuffleNetV1
+from .shufflenet import ShuffleNetV1, ShuffleNetV2
 from .inception import InceptionV3
 from .rcnn import Faster_RCNN
 from .unet import UNet

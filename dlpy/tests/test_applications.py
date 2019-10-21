@@ -810,6 +810,13 @@ class TestApplications(unittest.TestCase):
         self.assertTrue(model.layers[127]._output_size == (4, 4, 3200))
         model.print_summary()
 
+    def test_shufflenetv1(self):
+        from dlpy.applications import ShuffleNetV2
+        model = ShuffleNetV2(self.s, n_classes=2)
+        # self.assertTrue(len(model.layers) == 130)
+        # self.assertTrue(model.layers[127]._output_size == (4, 4, 3200))
+        model.print_summary()
+
     def test_unet(self):
         from dlpy.applications import UNet
         model = UNet(self.s, width=1024, height=1024, offsets=[1.25], scale=0.0002)
@@ -828,4 +835,11 @@ class TestApplications(unittest.TestCase):
                      bn_after_convolutions=True)
         self.assertTrue(len(model.layers) == 33 + 9 * 2)
         self.assertTrue(model.layers[12].output_size == (256, 256, 256))
+        model.print_summary()
+
+    def test_shufflenetv2(self):
+        from dlpy.applications import ShuffleNetV2
+        model = ShuffleNetV2(self.s)
+        self.assertTrue(len(model.layers) == 130)
+        self.assertTrue(model.layers[127]._output_size == (4, 4, 3200))
         model.print_summary()
