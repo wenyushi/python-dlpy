@@ -166,13 +166,13 @@ class Layer(object):
     can_be_last_layer = False
     number_of_instances = 0
     layer_id = None
-    shared_weights = None
 
     def __init__(self, name=None, config=None, src_layers=None):
         self.name = name
         self.config = config
         self.depth = None
         self._inbound_nodes = []
+        self.shared_weights = None
 
         if src_layers is None:
             self.src_layers = None
@@ -191,17 +191,19 @@ class Layer(object):
     def __call__(self, inputs):
         layer_type = self.__class__.__name__
         if isinstance(inputs, list):
-            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale', 'EmbeddingLoss',
-                                                      'Dense', 'Model', 'OutputLayer', 'ROIPooling', 'FastRCNN']:
+            if len(inputs) > 1 and layer_type not in ['Concat', 'Res', 'Scale', 'CLoss',
+                                                      'Dense', 'Model', 'OutputLayer', 'ROIPooling', 'FastRCNN',
+                                                      'Recurrent', 'EmbeddingLoss']:
                 raise DLPyError('The input of {} should have only one layer.'.format(layer_type))
         else:
             inputs = [inputs]
         if layer_type == 'Model':
+            self.model_counter += 1
             copied_model = deepcopy(self)
             # update name
-            if copied_model.number_of_instances != 0:
+            if copied_model.model_counter > 1:
                 for layer in copied_model.layers:
-                    layer.name = layer.name + '_' + '{}'.format(copied_model.number_of_instances)
+                    layer.name = layer.name + '_' + '{}'.format(copied_model.model_counter)
             # share weights
             # for layer in copied_model.layers:
             #     layer.from_sub_network = self
@@ -246,7 +248,7 @@ class Layer(object):
         return self.tensor
 
     def __lt__(self, other):
-        return self.depth < other.depth
+        return self.layer_id < other.layer_id
 
     def __str__(self):
         return self.name
@@ -333,10 +335,10 @@ class Layer(object):
         # calculate FLOPS per layer type. Note that bias computation is ignored.
         if self.__class__ in [Conv2d, Conv2DTranspose, Conv1d]:
             kernel_wh = int(self.config['height']) * int(self.config['width'])
-            self.FLOPS = feature_map_size * self.src_layers[0].output_size[-1] * kernel_wh
+            self.FLOPS = int(feature_map_size * self.src_layers[0].output_size[-1] * kernel_wh)
         elif self.__class__ == GroupConv2d:
             kernel_wh = int(self.config['height']) * int(self.config['width'])
-            self.FLOPS = feature_map_size * self.src_layers[0].output_size[-1] * kernel_wh / self.n_groups
+            self.FLOPS = int(feature_map_size * self.src_layers[0].output_size[-1] * kernel_wh / self.n_groups)
         elif self.__class__ == Dense:
             self.FLOPS = self.num_weights
         else:
@@ -871,7 +873,6 @@ class GroupConv2d(Conv2d):
     def output_size(self):
         if self._output_size is None:
             # calculate output according to specified padding
-            # calculate output according to specified padding
             if self.padding != (None, None):
                 out_h = ((self.src_layers[0].output_size[0] - self.config['height'] + 2 * self.padding[0]) //
                          self.stride[0] + 1)
@@ -1018,10 +1019,11 @@ class Conv2DTranspose(Conv2d):
     def output_size(self):
         if self._output_size is None:
             input_size = self.src_layers[0].output_size[:-1]
-            output_height = (input_size[0]-1)*self.stride[0]-2*self.padding[0]+self.config['height']+self.output_padding[0]
-            output_width = (input_size[1]-1)*self.stride[1]-2*self.padding[1]+self.config['width']+self.output_padding[1]
+            output_height = int((input_size[0]-1)*self.stride[0]-2*self.padding[0]+self.config['height']+self.output_padding[0])
+            output_width = int((input_size[1]-1)*self.stride[1]-2*self.padding[1]+self.config['width']+self.output_padding[1])
             self._output_size = (output_height, output_width, int(self.config['n_filters']))
-        return self._output_size
+        # cast element as integer
+        return tuple([int(i) for i in self._output_size])
 
     @property
     def num_weights(self):
@@ -2096,6 +2098,12 @@ class Reshape(Layer):
         Specifies the depth of the feature maps.
     src_layers : iter-of-Layers, optional
         Specifies the layers directed to this layer.
+    order : string, optional
+        Specifies how to reshape the source layer.
+        Valid Values: AUTO, WHD, WDH, DWH, HWD, DHW, HDW. For AUTO, when the output channel is 1,
+        the reshape order is depth (D), width (W), and height (H).
+        When the output channel is evenly divisible by the input channel,
+        the reshape order is width (W), height (H), and depth (D).
 
     Returns
     -------
@@ -2109,7 +2117,7 @@ class Reshape(Layer):
     number_of_instances = 0
 
     def __init__(self, name=None, act='AUTO', fcmp_act=None, width=None, height=None, depth=None, src_layers=None,
-                 **kwargs):
+                 order=None, **kwargs):
 
         if not __dev__ and len(kwargs) > 0:
             raise DLPyError('**kwargs can be used only in development mode.')
@@ -2132,7 +2140,7 @@ class Reshape(Layer):
     @property
     def output_size(self):
         if self._output_size is None:
-            self._output_size = (self.config['height'], self.config['width'], self.config['depth'])
+            self._output_size = (int(self.config['height']), int(self.config['width']), int(self.config['depth']))
         return self._output_size
 
     @property
@@ -2422,8 +2430,8 @@ class ROIPooling(Layer):
     @property
     def output_size(self):
         if self._output_size is None:
-            self._output_size = (self.config['output_width'], self.config['output_height'],
-                                 self.src_layers[0].output_size[1])
+            self._output_size = (int(self.config['output_width']), int(self.config['output_height']),
+                                 int(self.src_layers[0].output_size[1]))
         return self._output_size
 
     @property
@@ -2512,10 +2520,6 @@ class EmbeddingLoss(Layer):
     ----------
     name : string, optional
         Specifies the name of the layer.
-    distance : string, optional
-        Specifies the distance measure for the embedding loss layer.
-        Valid Values: AUTO, COS, L1, L2
-        Default: L2
     margin : double, optional
         Specifies the margin value that defines a radius for dissimilar pair contributions.
         Default: 2

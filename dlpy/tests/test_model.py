@@ -32,7 +32,7 @@ from dlpy.sequential import Sequential
 from dlpy.timeseries import TimeseriesTable
 from dlpy.layers import (InputLayer, Conv2d, Conv1d, Pooling, Dense, OutputLayer,
                          Recurrent, Keypoints, BN, Res, Concat, Reshape, GlobalAveragePooling1D)
-from dlpy.utils import caslibify
+from dlpy.utils import caslibify, caslibify_context
 from dlpy.applications import Tiny_YoloV2
 import unittest
 
@@ -53,7 +53,7 @@ class TestModel(unittest.TestCase):
         swat.options.cas.print_messages = False
         swat.options.interactive_mode = False
 
-        cls.s = swat.CAS()
+        cls.s = swat.CAS('dlgrd009', 13305)
         cls.server_type = tm.get_cas_host_type(cls.s)
         cls.server_sep = '\\'
         if cls.server_type.startswith("lin") or cls.server_type.startswith("osx"):
@@ -943,7 +943,7 @@ class TestModel(unittest.TestCase):
         self.assertEqual(model.summary['Output Size'].values[-3], (1, 1, 1024))
         model.print_summary()
         # 2d print summary numerical check
-        self.assertEqual(model.total_FLOPS_in_unit, 6746.348)
+        self.assertEqual(model.summary.iloc[1, -1], 2985984)
 
     def test_heat_map_analysis(self):
         if self.data_dir is None:
@@ -1002,7 +1002,36 @@ class TestModel(unittest.TestCase):
         self.assertEqual(model_m.layers[3].output_size, (1, 80, 100))
         model_m.print_summary()
         # 1d print summary numerical check
-        self.assertEqual(model_m.total_FLOPS_in_unit, 54.855)
+        self.assertEqual(model_m.summary.iloc[1, -1], 240000)
+
+    def test_load_weights_attr(self):
+        model = Model(self.s)
+        model.load(path=self.data_dir+'Simple_CNN1.sashdat')
+        # load_weights_attr table from server; expect to be clean
+        model.load_weights_attr(self.data_dir+'Simple_CNN1_weights_attr.sashdat')
+
+    def test_mobilenetv2(self):
+        try:
+            import onnx
+            from dlpy.model_conversion.onnx_transforms import (Transformer, OpTypePattern,
+                                                               ConstToInitializer,
+                                                               InitReshape, InitUnsqueeze,
+                                                               FuseMulAddBN)
+            from dlpy.model_conversion.onnx_graph import OnnxGraph
+            from onnx import helper, numpy_helper
+        except:
+            unittest.TestCase.skipTest(self, 'onnx package not found')
+
+        from dlpy.model import Model
+
+        path = '/cas/DeepLearn/weshiz/onnx/image_classification/mobilenetv2-1.0.onnx'
+
+        onnx_model = onnx.load_model(path)
+        model1 = Model.from_onnx_model(self.s,
+                                       onnx_model,
+                                       output_model_table='mobilenetv2',
+                                       offsets=255*[0.485, 0.456, 0.406],
+                                       norm_stds=255*[0.229, 0.224, 0.225])
 
     @classmethod
     def tearDownClass(cls):
