@@ -83,6 +83,13 @@ def almost_match(history, benchmark, significant=4):
             np.testing.assert_approx_equal(actual, desired, significant)
 
 
+def gpu_usage(file):
+    if os.path.basename(file).find('gpu') > -1:
+        return 1
+    else:
+        return 0
+
+
 def check_dlscore_astore_score_match(s, data_table, model_table, model_weights, decimal=0.001, **kwargs):
     df = s.fetch(data_table, sastypes=False).Fetch
     where_clause = ''  # the where clause to select one observation if _path_ exists.
