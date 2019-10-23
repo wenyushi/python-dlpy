@@ -866,10 +866,11 @@ class Network(Layer):
             _file_name_, _extension_ = os.path.splitext(file_name)
 
             _file_name_list_ = list(self._retrieve_('table.fileinfo',
-                                                    caslib=cas_lib_name,
+                                                    caslib=cas_lib_name, path=os.path.dirname(file_name),
                                                     includeDirectories=False).FileInfo.Name)
-
-            if (_file_name_ + '_weights' + _extension_) in _file_name_list_:
+            # _file_name_ can be directory name + filename, eg, dl/tiny-yolov2
+            weights_file_name = os.path.basename(_file_name_) + '_weights' + _extension_
+            if weights_file_name in _file_name_list_:
                 print('NOTE: ' + _file_name_ + '_weights' + _extension_ +
                       ' is used as model weigths.')
 
@@ -878,8 +879,8 @@ class Network(Layer):
                                 path=_file_name_ + '_weights' + _extension_,
                                 casout=dict(replace=True, name=self.model_name + '_weights'))
                 self.set_weights(self.model_name + '_weights')
-
-                if (_file_name_ + '_weights_attr' + _extension_) in _file_name_list_:
+                weights_attr_file_name = os.path.basename(_file_name_) + '_weights_attr' + _extension_
+                if weights_attr_file_name in _file_name_list_:
                     print('NOTE: ' + _file_name_ + '_weights_attr' + _extension_ +
                           ' is used as weigths attribute.')
                     self._retrieve_('table.loadtable',
