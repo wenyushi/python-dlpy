@@ -531,6 +531,15 @@ class TestUtils(unittest.TestCase):
         check_file = self.data_dir + 'vgg16.sashdat'
         self.assertTrue(file_exist_on_server(self.s, file=check_file))
 
+    def test_caslibify(self):
+        from dlpy.model import Model
+        self.s.table.addcaslib(activeonadd=False, datasource={'srctype': 'path'}, name='ast',
+                               path='/dept/ast/data',
+                               subdirectories=True)
+        img = ImageTable.load_files(self.s, '/dept/ast/data/face')
+        img.resize(416)
+        model = Model.from_sashdat(self.s, path='/dept/ast/data/dl/Tiny-Yolov2_face.sashdat')
+
 
 
 
