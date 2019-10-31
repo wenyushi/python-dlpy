@@ -239,7 +239,7 @@ def ShuffleNetV1(conn, model_table='ShuffleNetV1', n_classes=1000, n_channels=3,
     return model
 
 
-def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3, width=224, height=224, scale=1.0/255,
+def ShuffleNetV2(conn, model_table='ShuffleNetV2', n_classes=1000, n_channels=3, width=224, height=224,
                  norm_stds=(255*0.229, 255*0.224, 255*0.225), offsets=(255*0.485, 255*0.456, 255*0.406),
                  random_flip=None, random_crop=None, random_mutation=None, scale_factor=1.0,
                  stages_repeats=[4, 8, 4], stages_out_channels=[24, 176, 352, 704, 1024], conv_init='XAVIER'):
