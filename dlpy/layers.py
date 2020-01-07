@@ -45,6 +45,8 @@ PALETTES = dict(
         'scale': '#C8C8C8',
         'fcmp': '#C8C8C8',
         'reshape': '#C8C8C8',
+        'mhattention': '#79CDCD',
+        'layernorm': '#FFCC66',
         'unknown': '#FFFFFF',
     },
     default={
@@ -63,6 +65,8 @@ PALETTES = dict(
         'scale': '#5e4fa220',  # purple
         'fcmp': '#5e4fa220',  # purple
         'reshape': '#5e4fa220',  # purple
+        'mhattention': '#79cdcd40',  # dark slate gray
+        'layernorm': '#ffcc6640',  # light orange - complement to batchnorm color
         'unknown': '#9e014240',  # crimson
     }
 )
@@ -335,7 +339,7 @@ class Layer(object):
         # calculate FLOPS per layer type. Note that bias computation is ignored.
         if self.__class__ in [Conv2d, Conv2DTranspose, Conv1d]:
             kernel_wh = int(self.config['height']) * int(self.config['width'])
-            self.FLOPS = feature_map_size * self.src_layers[0].output_size[-1] * kernel_wh
+            self.FLOPS = int(feature_map_size * self.src_layers[0].output_size[-1] * kernel_wh)
         elif self.__class__ == GroupConv2d:
             kernel_wh = int(self.config['height']) * int(self.config['width'])
             self.FLOPS = int(feature_map_size * self.src_layers[0].output_size[-1] * kernel_wh / self.n_groups)
@@ -466,7 +470,9 @@ class InputLayer(Layer):
 
     @property
     def output_size(self):
-        if self.config['width'] is not None:
+        if hasattr(self, '_token_size'):
+            return self._token_size
+        elif self.config['width'] is not None:
             return self._output_size
         else:
             return 0
@@ -1019,10 +1025,11 @@ class Conv2DTranspose(Conv2d):
     def output_size(self):
         if self._output_size is None:
             input_size = self.src_layers[0].output_size[:-1]
-            output_height = (input_size[0]-1)*self.stride[0]-2*self.padding[0]+self.config['height']+self.output_padding[0]
-            output_width = (input_size[1]-1)*self.stride[1]-2*self.padding[1]+self.config['width']+self.output_padding[1]
+            output_height = int((input_size[0]-1)*self.stride[0]-2*self.padding[0]+self.config['height']+self.output_padding[0])
+            output_width = int((input_size[1]-1)*self.stride[1]-2*self.padding[1]+self.config['width']+self.output_padding[1])
             self._output_size = (output_height, output_width, int(self.config['n_filters']))
-        return self._output_size
+        # cast element as integer
+        return tuple([int(i) for i in self._output_size])
 
     @property
     def num_weights(self):
@@ -1350,6 +1357,9 @@ class Recurrent(Layer):
     dropout : float, optional
         Specifies the dropout rate.
         Default: 0
+    init_bias : float, optional
+        Specifies the initial bias for the layer.
+        Default: None        
     src_layers : iter-of-Layers, optional
         Specifies the layers directed to this layer.
 
@@ -1367,7 +1377,7 @@ class Recurrent(Layer):
 
     def __init__(self, n, name=None, act='AUTO', fcmp_act=None, init=None, std=None, mean=None, truncation_factor=None,
                  rnn_type='LSTM', output_type='ENCODING', max_output_length=None, reversed_=None, dropout=None,
-                 src_layers=None):
+                 init_bias=None, src_layers=None):
         parameters = locals()
         _clean_parameters(parameters)
         Layer.__init__(self, name, parameters, src_layers)
@@ -1465,7 +1475,12 @@ class BN(Layer):
         if self._num_bias is None:
             if self.src_layers is None:
                 self._num_bias = 0
-            self._num_bias = int(2 * self.src_layers[0].output_size[2])
+            # if the input of layer is 3 dimensions in (height * width * channel) format
+            if isinstance(self.src_layers[0].output_size, Iterable):
+                self._num_bias = int(2 * self.src_layers[0].output_size[-1])
+            # if the input of layer is one dimension
+            else:
+                self._num_bias = 2
         return self._num_bias
 
 
@@ -1598,11 +1613,19 @@ class Concat(Layer):
             # source layers' dimension should be consistent
             if len(set(n_dims)) != 1:
                 raise DLPyError('The dimension of source layers\' outputs are inconsistent.')
-            n_dim = len(self.src_layers[0].output_size)
+            # if the input of layer is 3 dimensions in (height * width * channel) format
+            if isinstance(self.src_layers[0].output_size, Iterable):
+                n_dim = len(self.src_layers[0].output_size)
+            # if the input of layer is one dimension
+            else:
+                n_dim = 1
             # last dimension should be sum of each layer's last dimension.
             for i in reversed(range(n_dim)):
                 if i == n_dim-1:
-                    self._output_size.append(int(sum([item.output_size[i] for item in self.src_layers])))
+                    if n_dim == 1:
+                        self._output_size.append(int(sum([item.output_size for item in self.src_layers])))
+                    else:
+                        self._output_size.append(int(sum([item.output_size[i] for item in self.src_layers])))
                 else:
                     self._output_size.append(int(self.src_layers[0].output_size[i]))
             # reorder
@@ -1679,7 +1702,7 @@ class OutputLayer(Layer):
         Default: AUTO
     fcmp_act : string, optional
         Specifies the FCMP activation function for the layer.
-    fcmp_error : string, optional
+    fcmp_err : string, optional
         Specifies the FCMP error function for the output layer.
     error : int, optional
         Specifies the error function. This function is also known as
@@ -1729,7 +1752,7 @@ class OutputLayer(Layer):
     can_be_last_layer = True
     number_of_instances = 0
 
-    def __init__(self, name=None, act='softmax', fcmp_act=None, fcmp_error=None, error=None, init=None, std=None,
+    def __init__(self, name=None, act='softmax', fcmp_act=None, fcmp_err=None, error=None, init=None, std=None,
                  mean=None, truncation_factor=None, init_bias=None, n=None, n_softmax_samples=None, include_bias=None,
                  target_std=None, full_connect=None, src_layers=None, **kwargs):
 
@@ -1780,8 +1803,10 @@ class OutputLayer(Layer):
     def kernel_size(self):
         if 'n' not in self.config:
             return None
-        if not self.config['full_connect']:
+        if self.config['full_connect']:
             return (int(self.num_features), int(self.config['n']))
+        else:
+            return None
 
     @property
     def num_weights(self):
@@ -2097,6 +2122,12 @@ class Reshape(Layer):
         Specifies the depth of the feature maps.
     src_layers : iter-of-Layers, optional
         Specifies the layers directed to this layer.
+    order : string, optional
+        Specifies how to reshape the source layer.
+        Valid Values: AUTO, WHD, WDH, DWH, HWD, DHW, HDW. For AUTO, when the output channel is 1,
+        the reshape order is depth (D), width (W), and height (H).
+        When the output channel is evenly divisible by the input channel,
+        the reshape order is width (W), height (H), and depth (D).
 
     Returns
     -------
@@ -2110,7 +2141,7 @@ class Reshape(Layer):
     number_of_instances = 0
 
     def __init__(self, name=None, act='AUTO', fcmp_act=None, width=None, height=None, depth=None, src_layers=None,
-                 **kwargs):
+                 order=None, **kwargs):
 
         if not __dev__ and len(kwargs) > 0:
             raise DLPyError('**kwargs can be used only in development mode.')
@@ -2513,10 +2544,6 @@ class EmbeddingLoss(Layer):
     ----------
     name : string, optional
         Specifies the name of the layer.
-    distance : string, optional
-        Specifies the distance measure for the embedding loss layer.
-        Valid Values: AUTO, COS, L1, L2
-        Default: L2
     margin : double, optional
         Specifies the margin value that defines a radius for dissimilar pair contributions.
         Default: 2
@@ -2558,6 +2585,261 @@ class EmbeddingLoss(Layer):
     def output_size(self):
         if self._output_size is None:
             self._output_size = self.src_layers[0].output_size
+        return self._output_size
+
+    @property
+    def num_bias(self):
+        return 0
+
+class MultiHeadAttention(Layer):
+    '''
+    Multi-head attention layer from "Attention is All You Need" (Vaswani et al., NIPS 2017)
+
+    Parameters
+    ----------
+    n : int
+        Specifies the number of neurons.
+    n_attn_heads : int
+        Specifies the number of attention heads.
+    name : string, optional
+        Specifies the name of the layer.
+    act : string, optional
+        Specifies the activation function.
+        Valid Values: AUTO, IDENTITY, LOGISTIC, SIGMOID, EXP, TANH, RECTIFIER, RELU, GELU
+        Default: AUTO
+    init : string, optional
+        Specifies the initialization scheme for the layer.
+        Valid Values: XAVIER, UNIFORM, NORMAL, CAUCHY, XAVIER1, XAVIER2, MSRA, MSRA1, MSRA2
+        Default: XAVIER
+    std : float, optional
+        Specifies the standard deviation value when the ``init`` parameter is set to NORMAL.
+    mean : float, optional
+        Specifies the mean value when the ``init`` parameter is set to NORMAL.
+    truncation_factor : float, optional
+        Specifies the truncation threshold (truncationFactor x std), when the
+        ``init`` parameter is set to NORMAL
+    dropout : float, optional
+        Specifies the dropout rate.
+        Default: 0
+    attn_dropout : float, optional
+        Specifies the attention dropout rate.
+        Default: 0
+    include_bias : bool, optional
+        Includes bias neurons.
+        Default: True
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`MultiHeadAttention`
+
+    '''
+
+    type = 'mhattention'
+    type_label = 'MHA'
+    type_desc = 'Multi-head attention layer'
+    can_be_last_layer = False
+    number_of_instances = 0
+
+    def __init__(self, n, n_attn_heads, name=None, act='AUTO', init=None, std=None, mean=None, truncation_factor=None,
+                 dropout=None, attn_dropout=None, include_bias=True, src_layers=None, **kwargs):
+        parameters = locals()
+        parameters = _unpack_config(parameters)
+        Layer.__init__(self, name, parameters, src_layers)
+        self._num_features = None
+        self.color_code = get_color(self.type)
+
+    @property
+    def output_size(self):
+        return int(self.config['n'])
+
+    @property
+    def num_bias(self):
+        if 'include_bias' in self.config:
+            return 3*int(self.config['n'])
+        else:
+            return 0
+
+    @property
+    def num_features(self):
+        if self.src_layers is None:
+            return 0
+        if isinstance(self.src_layers[0].output_size, int):
+            self._num_features = self.src_layers[0].output_size
+        else:
+            raise DLPyError('Source layers for multi-head attention layer must have only an integer output dimension')
+
+        return self._num_features
+
+    @property
+    def kernel_size(self):
+        return (int(self.config['n']), 1)
+
+    @property
+    def num_weights(self):
+        if isinstance(self.src_layers[0].output_size, int):
+            d_kv = self.src_layers[0].output_size/self.config['n_attn_heads']
+            return 3*(self.src_layers[0].output_size*d_kv)*self.config['n_attn_heads'] + d_kv*self.config['n_attn_heads']*self.config['n']
+        else:
+            raise DLPyError('Source layers for multi-head attention layer must have only an integer output dimension')
+
+class LayerNormalization(Layer):
+    '''
+    Layer normalization layer
+
+    Parameters
+    ----------
+    name : string, optional
+        Specifies the name of the layer.
+    act : string, optional
+        Specifies the activation function.
+        Valid Values: AUTO, IDENTITY, LOGISTIC, SIGMOID, EXP, TANH, RECTIFIER, RELU, GELU
+        Default: AUTO
+    epsilon : float, optional
+        Specifies the regularization constant.
+        Default: 1e-12
+    dropout : float, optional
+        Specifies the dropout rate.
+        Default: 0
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`LayerNormalization`
+
+    '''
+
+    type = 'layernorm'
+    type_label = 'LayerNorm'
+    type_desc = 'Layer normalization layer'
+    can_be_last_layer = False
+    number_of_instances = 0
+
+    def __init__(self, name=None, act='AUTO', epsilon=1e-12, dropout=None, src_layers=None, **kwargs):
+        parameters = locals()
+        parameters = _unpack_config(parameters)
+        if 'token_size' in parameters.keys():
+            self._token_size = parameters['token_size']
+            del parameters['token_size']
+        else:
+            self._token_size = None
+        Layer.__init__(self, name, parameters, src_layers)
+        self._num_features = None
+        self.color_code = get_color(self.type)
+
+    @property
+    def output_size(self):
+        if self._token_size is not None:
+            return int(self._token_size)
+        elif isinstance(self.src_layers[0].output_size, int):
+            return self.src_layers[0].output_size
+        elif isinstance(self.src_layers[0].output_size, tuple):
+            return self.src_layers[0].output_size[1]                    # list is HWD, only supporting RNN models for now
+        else:
+            raise DLPyError('Source layers for layer normalization layer must have an integer output dimension')
+
+    @property
+    def num_bias(self):
+        if self._token_size is not None:
+            return int(self._token_size)
+        elif isinstance(self.src_layers[0].output_size, int):
+            return self.src_layers[0].output_size
+        elif isinstance(self.src_layers[0].output_size, tuple):
+            return self.src_layers[0].output_size[1]                    # list is HWD, only supporting RNN models for now
+        else:
+            raise DLPyError('Source layers for layer normalization layer must have an integer output dimension')
+
+    @property
+    def num_features(self):
+        if self.src_layers is None:
+            return 0
+        if isinstance(self.src_layers[0].output_size, int):
+            self._num_features = self.src_layers[0].output_size
+        elif isinstance(self.src_layers[0].output_size, tuple):
+            self._num_features = self.src_layers[0].output_size[1]       # list is HWD, only supporting RNN models for now
+        else:
+            raise DLPyError('Source layers for layer_normalization layer must have an integer output dimension')
+
+        return self._num_features
+
+    @property
+    def kernel_size(self):
+        if self._token_size is None:
+            return (int(self._num_features), 1)
+        else:
+            return (int(self._token_size), 1)
+
+    @property
+    def num_weights(self):
+        if self._token_size is not None:
+            return int(self._token_size)
+        elif isinstance(self.src_layers[0].output_size, int):
+            return self.src_layers[0].output_size
+        elif isinstance(self.src_layers[0].output_size, tuple):
+            return self.src_layers[0].output_size[1]                    # list is HWD, only supporting RNN models for now
+        else:
+            raise DLPyError('Source layers for multi-head attention layer must have an integer output dimension')
+
+class FCMPLayer(Layer):
+    '''
+    FCMP layer
+
+    Parameters
+    ----------
+    width : int
+        Specifies the width of feature maps for this layer.
+    height : int
+        Specifies the height of feature maps for this layer.
+    depth : int
+        Specifies the depth of feature maps for this layer.
+    n_weights : int
+        Specifies the number of weights used in the FCMP layer.
+    forward_func : string
+        specifies the custom function for the FCMP layer's forward pass.
+    backward_func : string
+        Specifies the custom function for the FCMP layer's backward pass.
+    name : string, optional
+        Specifies the name of the layer.
+    src_layers : iter-of-Layers, optional
+        Specifies the layers directed to this layer.
+
+    Returns
+    -------
+    :class:`FCMPLayer`
+
+    '''
+    type = 'FCMP'
+    type_label = 'FCMP'
+    type_desc = 'FCMP layer'
+    can_be_last_layer = False
+    number_of_instances = 0
+
+    def __init__(self, width, height, depth, n_weights, forward_func, backward_func,
+                 name = None, src_layers = None, **kwargs):
+
+        if not __dev__ and len(kwargs) > 0:
+            raise DLPyError('**kwargs can be used only in development mode.')
+
+        parameters = locals()
+        parameters = _unpack_config(parameters)
+        # _clean_parameters(parameters)
+        Layer.__init__(self, name, parameters, src_layers)
+        self._n_weights = n_weights
+        self._output_size = (height, width, depth)
+        self.color_code = get_color(self.type)
+
+    @property
+    def kernel_size(self):
+        return None
+
+    @property
+    def num_weights(self):
+        return self._n_weights
+
+    @property
+    def output_size(self):
         return self._output_size
 
     @property

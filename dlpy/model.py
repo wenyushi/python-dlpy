@@ -106,7 +106,7 @@ class Model(Network):
             lr=0.01, optimizer=None, nominals=None, texts=None, target_sequence=None, sequence=None, text_parms=None,
             valid_table=None, valid_freq=1, gpu=None, attributes=None, weight=None, seed=0, record_seed=0,
             missing='mean', target_missing='mean', repeat_weight_table=False, force_equal_padding=None,
-            save_best_weights=False, n_threads=None, target_order='ascending'):
+            save_best_weights=False, n_threads=None, target_order='ascending', train_from_scratch=None):
         """
         Fitting a deep learning model.
 
@@ -233,6 +233,8 @@ class Model(Network):
             training data samples.
             Valid Values: 'ascending', 'descending', 'hash'
             Default: 'ascending'
+        train_from_scratch : bool, optional
+            When set to True, it ignores the existing weights and trains the model from the scracth.
 
         Returns
         --------
@@ -271,11 +273,17 @@ class Model(Network):
         # check whether the field is none or not
         if self.model_weights is not None and self.model_weights.to_table_params()['name'].upper() in \
                 list(self._retrieve_('table.tableinfo').TableInfo.Name):
-            print('NOTE: Training based on existing weights.')
-            init_weights = self.model_weights
+            if train_from_scratch:
+                print('NOTE: Ignoring the existing weights and training from scratch.')
+                init_weights = None
+                self.n_epochs = 0
+            else:
+                print('NOTE: Training based on existing weights.')
+                init_weights = self.model_weights
         else:
             print('NOTE: Training from scratch.')
             init_weights = None
+            self.n_epochs = 0
 
         # when model_weights is none, reset it
         if self.model_weights is None:
@@ -770,7 +778,9 @@ class Model(Network):
             raise DLPyError('model.fit should be run before calling plot_training_history')
 
     def evaluate(self, data, text_parms=None, layer_out=None, layers=None, gpu=None, buffer_size=None,
-                 mini_batch_buf_size=None, top_probs=None, use_best_weights=False, display_class_score_info="ALL"):
+                 mini_batch_buf_size=None, top_probs=None, use_best_weights=False,
+                 random_crop='none', random_flip='none',  random_mutation='none',
+                 model_task=None, display_class_score_info="ALL"):
         """
         Evaluate the deep learning model on a specified validation data set
 
@@ -821,11 +831,38 @@ class Model(Network):
             error saved during a previous training is used while scoring
             input data rather than the final weights from the training.
             Default: False
+        random_flip : string, optional
+            Specifies how to flip the data in the input layer when image data is used.
+            H stands for horizontal
+            V stands for vertical
+            HW stands for horizontal and vertical
+            Approximately half of the input data is subject to flipping.
+            Default: NONE
+            Valid Values: NONE, H, V, HV
+        random_crop : string, optional
+            Specifies how to crop the data in the input layer when image
+            data is used. Images are cropped to the values that are specified
+            in the width and height parameters. Only the images with one or
+            both dimensions that are larger than those sizes are cropped.
+            UNIQUE: specifies to crop images to the size specified in the
+            height and width parameters. Images that are less than or equal
+            to the size are not modified. For images that are larger, the
+            cropping begins at a random offset for x and y.
+            Default: NONE
+            Valid Values: NONE, UNIQUE
+        random_mutation : string, optional
+            Specifies how to mutate images.
+            Default: NONE
+            Valid Values: NONE, RANDOM
         display_class_score_info : string, optional
             If it is set to All, display the ClassScoreInfo table that summarizes information about all classes.
             Otherwise, do not display the ClassScoreInfo table.
             Valid Values: NONE, ALL
             default: ALL
+
+        model_task : string, optional
+            Specifies the model task type.
+            Valid Values: CLASSIFICATION, REGRESSION
 
         Returns
         -------
@@ -854,6 +891,10 @@ class Model(Network):
         if self.model_type == 'RNN':
             en = False
 
+        # use encoded name when model does classification or regression
+        if model_task and (model_task.upper() == 'CLASSIFICATION' or model_task.upper() == 'REGRESSION'):
+            en = True
+
         if use_best_weights and self.best_weights is not None:
             print('NOTE: Using the weights providing the smallest loss error.')
             res = self.score(table=input_table, model=self.model_table, init_weights=self.best_weights,
@@ -861,6 +902,7 @@ class Model(Network):
                              encode_name=en, text_parms=text_parms, layer_out=lo,
                              layers=layers, gpu=gpu, mini_batch_buf_size=mini_batch_buf_size,
                              top_probs=top_probs, buffer_size=buffer_size,
+                             random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation,
                              display_class_score_info = display_class_score_info)
         else:
             if self.model_weights is None:
@@ -870,7 +912,8 @@ class Model(Network):
                                  copy_vars=copy_vars, casout=dict(replace=True, name=valid_res_tbl),
                                  encode_name=en, text_parms=text_parms, layer_out=lo,
                                  layers=layers, gpu=gpu, mini_batch_buf_size=mini_batch_buf_size,
-                                 buffer_size=buffer_size, top_probs=top_probs)
+                                 buffer_size=buffer_size, top_probs=top_probs,
+                                 random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation)
 
         if res.severity > 1:
             raise DLPyError('something is wrong while scoring the input data with the model.')
@@ -890,17 +933,29 @@ class Model(Network):
                 self.target = output_names[0][2:]
                 self.valid_conf_mat = self.conn.crosstab(table=valid_res_tbl, row=self.target, col='I_' + self.target)
 
+        # always set valid_res_tbl
+        self.valid_res_tbl = self.conn.CASTable(valid_res_tbl)
+
         if self.model_type == 'CNN':
             if not self.conn.has_actionset('image'):
                 self.conn.loadactionset(actionSet='image', _messagelevel='error')
 
-            self.valid_res_tbl = self.conn.CASTable(valid_res_tbl)
             temp_columns = self.valid_res_tbl.columns.tolist()
-            columns = [item for item in temp_columns if item[0:9] == 'P_' + self.target or item == 'I_' + self.target]
-            img_table = self._retrieve_('image.fetchimages', fetchimagesvars=columns, imagetable=self.valid_res_tbl, to=1000)
-            img_table = img_table.Images
 
-            self.valid_res = img_table
+            # the model might not use the image data
+            do_image = False
+            for col in temp_columns:
+                if col.lower() == '_image_':
+                    do_image = True
+                    break
+
+            # when do images, fetch some images back to client
+            if do_image:
+                columns = [item for item in temp_columns if item[0:9] == 'P_' + self.target or item == 'I_' + self.target]
+                img_table = self._retrieve_('image.fetchimages', fetchimagesvars=columns, imagetable=self.valid_res_tbl, to=1000)
+                img_table = img_table.Images
+
+                self.valid_res = img_table
         else:
             self.valid_res = res
 
@@ -1100,7 +1155,8 @@ class Model(Network):
 
     def predict(self, data, text_parms=None, layer_out=None, layers=None, gpu=None, buffer_size=10,
                 mini_batch_buf_size=None, top_probs=None, use_best_weights=False, n_threads=None,
-                layer_image_type=None, log_level=0, display_class_score_info=None):
+                layer_image_type=None, log_level=0,
+                random_crop='none', random_flip='none',  random_mutation='none', display_class_score_info=None):
         """
         Evaluate the deep learning model on a specified validation data set
 
@@ -1168,6 +1224,29 @@ class Model(Network):
             Setting the value to 1 sends start and end messages.
             Setting the value to 2 adds the iteration history to the client messaging.
             default: 0
+        random_flip : string, optional
+            Specifies how to flip the data in the input layer when image data is used.
+            H stands for horizontal
+            V stands for vertical
+            HW stands for horizontal and vertical
+            Approximately half of the input data is subject to flipping.
+            Default: NONE
+            Valid Values: NONE, H, V, HV
+        random_crop : string, optional
+            Specifies how to crop the data in the input layer when image
+            data is used. Images are cropped to the values that are specified
+            in the width and height parameters. Only the images with one or
+            both dimensions that are larger than those sizes are cropped.
+            UNIQUE: specifies to crop images to the size specified in the
+            height and width parameters. Images that are less than or equal
+            to the size are not modified. For images that are larger, the
+            cropping begins at a random offset for x and y.
+            Default: NONE
+            Valid Values: NONE, UNIQUE
+        random_mutation : string, optional
+            Specifies how to mutate images.
+            Default: NONE
+            Valid Values: NONE, RANDOM
         display_class_score_info : string, optional
             If it is set to All, display the ClassScoreInfo table that summarizes information about all classes.
             Otherwise, do not display the ClassScoreInfo table. This is the default setting for CNN models.
@@ -1204,6 +1283,7 @@ class Model(Network):
                              text_parms=text_parms, layer_out=lo, layers=layers, gpu=gpu,
                              mini_batch_buf_size=mini_batch_buf_size, top_probs=top_probs, buffer_size=buffer_size,
                              n_threads=n_threads, layer_image_type=layer_image_type, log_level=log_level,
+                             random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation,
                              display_class_score_info=display_class_score_info)
             self.valid_res_tbl = self.conn.CASTable(valid_res_tbl)
             return res
@@ -1212,7 +1292,8 @@ class Model(Network):
                              copy_vars=copy_vars, casout=dict(replace=True, name=valid_res_tbl), encode_name=en,
                              text_parms=text_parms, layer_out=lo, layers=layers, gpu=gpu,
                              mini_batch_buf_size=mini_batch_buf_size, top_probs=top_probs, buffer_size=buffer_size,
-                             n_threads=n_threads, layer_image_type=layer_image_type, log_level=log_level)
+                             n_threads=n_threads, layer_image_type=layer_image_type, log_level=log_level,
+                             random_flip=random_flip, random_crop=random_crop, random_mutation=random_mutation)
             self.valid_res_tbl = self.conn.CASTable(valid_res_tbl)
             return res    
         
@@ -2992,9 +3073,6 @@ class Optimizer(DLPyDict):
     bn_src_layer_warnings : bool, optional
         Turns warning on or off, if batch normalization source layer has
         an atypical type, activation, or include_bias setting. Default: False
-        freeze_layers_to : string
-        Specifies a layer name to freeze this layer and all the layers before
-        this layer.
     total_mini_batch_size : int, optional
         specifies the number of observations in a mini-batch. You can use
         this parameter to control the number of observations that the action
@@ -3022,7 +3100,6 @@ class Optimizer(DLPyDict):
         this layer.
     freeze_batch_norm_stats : Boolean
         When set to True, freezes the statistics of all batch normalization layers.
-        Default : False
     freeze_layers : list of string
         Specifies a list of layer names whose trainable parameters will be frozen.
     ignore_training_error : bool, optional
@@ -3040,7 +3117,7 @@ class Optimizer(DLPyDict):
                  dropout=0, dropout_input=0, dropout_type='standard', stagnation=0, threshold=0.00000001, f_conv=0,
                  snapshot_freq=0, log_level=0, bn_src_layer_warnings=True, freeze_layers_to=None, flush_weights=False,
                  total_mini_batch_size=None, mini_batch_buf_size=None,
-                 freeze_layers=None, freeze_batch_norm_stats=False, ignore_training_error=False):
+                 freeze_layers=None, freeze_batch_norm_stats=None, ignore_training_error=False):
         DLPyDict.__init__(self, algorithm=algorithm, mini_batch_size=mini_batch_size, seed=seed, max_epochs=max_epochs,
                           reg_l1=reg_l1, reg_l2=reg_l2, dropout=dropout, dropout_input=dropout_input,
                           dropout_type=dropout_type, stagnation=stagnation, threshold=threshold, f_conv=f_conv,
