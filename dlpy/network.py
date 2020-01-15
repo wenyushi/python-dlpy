@@ -863,6 +863,8 @@ class Network(Layer):
                     self.layers.append(extract_layernorm_layer(layer_table = layer_table))
                 elif layer_type == 29:
                     self.layers.append(extract_mhattention_layer(layer_table = layer_table))
+                else:
+                    raise DLPyError('Doesn\'t support')
 
             conn_mat = model_table[['_DLNumVal_', '_DLLayerID_']][
                 model_table['_DLKey1_'].str.contains('srclayers')].sort_values('_DLLayerID_')
@@ -960,6 +962,9 @@ class Network(Layer):
                                          label_length=label_length, use_gpu=use_gpu, embedding_dim=embedding_dim)
         elif file_name.lower().endswith('onnxmodel.h5'):
             self.load_weights_from_keras(path, labels=labels, data_spec=data_spec, label_file_name=label_file_name,            
+                                         label_length=label_length, use_gpu=use_gpu, embedding_dim=embedding_dim)
+        elif file_name.lower().endswith('tvmmodel.h5'):
+            self.load_weights_from_keras(path, labels=labels, data_spec=data_spec, label_file_name=label_file_name,
                                          label_length=label_length, use_gpu=use_gpu, embedding_dim=embedding_dim)
         else:
             raise DLPyError('Weights file must be one of the follow types:\n'

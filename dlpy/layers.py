@@ -548,6 +548,7 @@ class _Conv(Layer):
     :class:`_Conv`
 
     '''
+    type = 'convo'
 
     def __init__(self, n_filters, width=None, height=None, stride=1, name=None, stride_horizontal=None,
                  stride_vertical=None, padding=None, padding_width=None, padding_height=None, act='relu',
