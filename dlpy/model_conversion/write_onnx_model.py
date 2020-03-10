@@ -23,6 +23,8 @@ from onnx import helper, numpy_helper
 from onnx import TensorProto
 import numpy as np
 
+from dlpy.utils import DLPyError
+
 
 class OnnxWriteError(ValueError):
     '''
@@ -76,7 +78,7 @@ def sas_to_onnx(layers, model_table, model_weights):
                                                        shape=[1, C, H, W])
             inputs.append(value_info)
 
-        elif layer.type == 'convo' or layer.type == 'groupconvo':
+        elif layer.type in ['convo', 'groupconvo', 'transconvo']:
             H = int(layer.config['height'])
             W = int(layer.config['width'])
             M = int(layer.config['n_filters'])
@@ -121,13 +123,29 @@ def sas_to_onnx(layers, model_table, model_weights):
                 dropout_input = act_output
                 dropout_output = [layer.name]
 
-            conv_op = helper.make_node(op_type='Conv',
-                                       inputs=conv_input,
-                                       outputs=conv_output,
-                                       pads=padding,
-                                       kernel_shape=[H, W],
-                                       strides=[S_h, S_w],
-                                       group=group)
+            # for transpose convolution
+            if layer.type == 'transconvo':
+                # set output padding for transpose convolution
+                output_padding = get_output_paddings(layer)
+                # here we explicitly set pads and output padding.
+                conv_op = helper.make_node(op_type='ConvTranspose',
+                                           auto_pad='NOTSET',
+                                           inputs=conv_input,
+                                           outputs=conv_output,
+                                           output_padding=output_padding,
+                                           pads=padding,
+                                           kernel_shape=[H, W],
+                                           strides=[S_h, S_w],
+                                           group=group)
+            # for convolution and group convolution
+            else:
+                conv_op = helper.make_node(op_type='Conv',
+                                           inputs=conv_input,
+                                           outputs=conv_output,
+                                           pads=padding,
+                                           kernel_shape=[H, W],
+                                           strides=[S_h, S_w],
+                                           group=group)
             nodes.append(conv_op)
 
             # activation op
@@ -557,7 +575,7 @@ def sas_to_onnx(layers, model_table, model_weights):
                 act_op = make_onnx_activation(act, act_input, act_output)
                 nodes.append(act_op)
 
-        elif layer.type == 'detection':
+        elif layer.type in ['detection', 'segmentation']:
             # get output dimensions
             out_w, out_h, out_c = layer.src_layers[0].output_size
             # add value info to graph output
@@ -796,3 +814,21 @@ def get_strides(layer):
               'Setting stride to 1')
         return [1, 1]
 
+
+def get_output_paddings(layer):
+    ''' Gets the output paddings along each axis '''
+    if layer.config.get('output_padding') is not None:
+        return [int(layer.config['output_padding'])]*2
+    elif (layer.config.get('output_padding_height') is not None and
+          layer.config.get('output_padding_width') is None):
+        return [int(layer.config['output_padding_height'])]*2
+    elif (layer.config.get('output_padding_width') is not None and
+          layer.config.get('output_padding_height') is None):
+        return [int(layer.config['output_padding_width'])]*2
+    elif (layer.config.get('output_padding_width') is not None and
+          layer.config.get('output_padding_height') is not None):
+        S_h = int(layer.config['output_padding_height'])
+        S_w = int(layer.config['output_padding_width'])
+        return [S_h, S_w]
+    else:
+        raise DLPyError('Please specify necessary parameters related to output padding of transpose convolution.')
