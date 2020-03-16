@@ -555,6 +555,19 @@ class TestNetwork(tm.TestCase):
         model_extracted = Model.from_table(self.s.CASTable(model.model_table['name']))
         model_extracted.compile()
 
+    def test_extract_transpose_convolution_1(self):
+        if self.data_dir is None:
+            tm.TestCase.skipTest(self, "DLPY_DATA_DIR is not set in the environment variables")
+
+        model = Model.from_sashdat(self.s, self.data_dir+'UNET.sashdat')
+        for l in model.layers:
+            if l.type == 'transconvo':
+                self.assertTrue('output_padding_width' in l.config)
+                self.assertTrue('output_padding_height' in l.config)
+                self.assertTrue(l.config['stride_horizontal'] == 2)
+                self.assertTrue(l.config['stride_vertical'] == 2)
+
+
     @classmethod
     def tearDownClass(cls):
         # tear down tests

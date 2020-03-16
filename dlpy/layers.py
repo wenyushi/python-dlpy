@@ -1019,7 +1019,12 @@ class Conv2DTranspose(Conv2d):
         self._output_size = output_size
         self.padding = parameter_2d(padding, padding_height, padding_width, (0, 0))
         self.stride = parameter_2d(stride, stride_vertical, stride_horizontal, (1, 1))
-        self.output_padding = parameter_2d(output_padding, output_padding_height, output_padding_width, (0, 0))
+        # default value for output_padding is (None, None)
+        # once the model is ready and infer shape is done, output_padding will be resigned in calculate_output_padding()
+        self.output_padding = parameter_2d(output_padding, output_padding_height, output_padding_width, (None, None))
+        if self.output_padding != (None, None):
+            self.config['output_padding_height'] = self.output_padding[0]
+            self.config['output_padding_width'] = self.output_padding[1]
 
     @property
     def output_size(self):
@@ -1053,7 +1058,7 @@ class Conv2DTranspose(Conv2d):
 
     def calculate_output_padding(self):
         '''calculate output_padding before adding the layer'''
-        if self._output_size is not None:
+        if self._output_size is not None and self.output_padding == (None, None):
             input_size = self.src_layers[0].output_size[:2]
             stride = self.stride
             padding = self.padding

@@ -314,7 +314,7 @@ class TestLayers(unittest.TestCase):
         trans1 = Conv2DTranspose(n_filters=30, stride_horizontal = 2)
         self.assertTrue(trans1.padding == (0, 0))
         self.assertTrue(trans1.stride == (1, 2))
-        self.assertTrue(trans1.output_padding == (0, 0))
+        self.assertTrue(trans1.output_padding == (None, None))
 
         trans2 = Conv2DTranspose(n_filters = 30, padding_width = 3, stride = 10, output_padding = 2)
         self.assertTrue(trans2.padding == (0, 3))
@@ -322,7 +322,7 @@ class TestLayers(unittest.TestCase):
         self.assertTrue(trans2.output_padding == (2, 2))
 
         trans3 = Conv2DTranspose(n_filters = 30, padding_width = 3, stride = 10, output_padding_width = 2)
-        self.assertTrue(trans3.output_padding == (0, 2))
+        self.assertTrue(trans3.output_padding == (None, 2))
 
     def test_group_conv1(self):
         group_conv1 = GroupConv2d(n_filters=30, n_groups=3, stride_horizontal = 2)

@@ -2678,9 +2678,8 @@ def extract_conv2dtranspose_layer(layer_table):
         Options that can be passed to layer definition
 
     '''
-    num_keys = ['n_filters', 'width', 'height', 'stride', 'std', 'mean',
-                'init_bias', 'dropout', 'truncation_factor', 'init_b', 'trunc_fact',
-                'output_padding_height', 'output_padding_width']
+    num_keys = ['n_filters', 'width', 'height', 'std', 'mean',
+                'init_bias', 'dropout', 'truncation_factor', 'init_b', 'trunc_fact']
     str_keys = ['act', 'init']
 
     conv2dtranspose_layer_config = dict()
@@ -2706,6 +2705,16 @@ def extract_conv2dtranspose_layer(layer_table):
         conv2dtranspose_layer_config['padding_width'] = padding_width
     if padding_height != -1:
         conv2dtranspose_layer_config['padding_height'] = padding_height
+
+    output_padding_width = dl_numval[layer_table['_DLKey1_'] == 'transposeconvopts.outputPaddingWidth'].tolist()[0]
+    output_padding_height = dl_numval[layer_table['_DLKey1_'] == 'transposeconvopts.outputPaddingHeight'].tolist()[0]
+    conv2dtranspose_layer_config['output_padding_width'] = output_padding_width
+    conv2dtranspose_layer_config['output_padding_height'] = output_padding_height
+
+    stride_width = dl_numval[layer_table['_DLKey1_'] == 'transposeconvopts.stride_width'].tolist()[0]
+    stride_height = dl_numval[layer_table['_DLKey1_'] == 'transposeconvopts.stride_height'].tolist()[0]
+    conv2dtranspose_layer_config['stride_horizontal'] = stride_width
+    conv2dtranspose_layer_config['stride_vertical'] = stride_height
 
     layer = Conv2DTranspose(**conv2dtranspose_layer_config)
     return layer

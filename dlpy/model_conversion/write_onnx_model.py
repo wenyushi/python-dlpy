@@ -173,6 +173,14 @@ def sas_to_onnx(layers, model_table, model_weights):
             else:
                 conv_weights = np.array(weights, dtype=np.float32)
             conv_weights = np.reshape(conv_weights, (M, -1, H, W))
+            # we need to transpose weights tensor for transpose convolution. 
+            # https://github.com/onnx/onnx/blob/master/docs/Operators.md#convtranspose
+            # The weight tensor that will be used in the convolutions; has size (C x M/group x kH x kW), where C is the number of channels,
+            # and kH and kW are the height and width of the kernel, and M is the number of feature maps. For more than 2 dimensions,
+            # the weight shape will be (C x M/group x k1 x k2 x ... x kn), where (k1 x k2 x ... x kn) is the dimension of the kernel. 
+            # The number of channels in the output should be equal to W.shape[1] * group (assuming zero based indices of the shape array)
+            if layer.type == 'transconvo':
+                conv_weights = np.transpose(conv_weights, (1, 0, -2, -1))
             conv_init = numpy_helper.from_array(conv_weights,
                                                 name=layer.name+'_w')
             initializer.append(conv_init)
@@ -575,6 +583,10 @@ def sas_to_onnx(layers, model_table, model_weights):
                 act_op = make_onnx_activation(act, act_input, act_output)
                 nodes.append(act_op)
 
+        # if layer type is detection or segmentation, just return a tensor.
+        # Although segmentation layer can be used to perform classification and regression,
+        # task very often depends on data type and then it is impossible to decide whether to
+        # add a softmax operation against channel axis. Here we just treat it as a output tensor.
         elif layer.type in ['detection', 'segmentation']:
             # get output dimensions
             out_w, out_h, out_c = layer.src_layers[0].output_size
@@ -816,7 +828,7 @@ def get_strides(layer):
 
 
 def get_output_paddings(layer):
-    ''' Gets the output paddings along each axis '''
+    ''' Gets the output paddings along each axis. Output_padding is an attribute of ConvTranspose '''
     if layer.config.get('output_padding') is not None:
         return [int(layer.config['output_padding'])]*2
     elif (layer.config.get('output_padding_height') is not None and
