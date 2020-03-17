@@ -347,47 +347,47 @@ class Network(Layer):
             layer_type = layer_table['_DLNumVal_'][layer_table['_DLKey1_'] ==
                                                    'layertype'].tolist()[0]
             if layer_type == 1:
-                model.layers.append(extract_input_layer(layer_table = layer_table))
+                model.layers.append(extract_input_layer(layer_table=layer_table))
             elif layer_type == 2:
-                model.layers.append(extract_conv_layer(layer_table = layer_table))
+                model.layers.append(extract_conv_layer(layer_table=layer_table))
             elif layer_type == 3:
-                model.layers.append(extract_pooling_layer(layer_table = layer_table))
+                model.layers.append(extract_pooling_layer(layer_table=layer_table))
             elif layer_type == 4:
-                model.layers.append(extract_fc_layer(layer_table = layer_table))
+                model.layers.append(extract_fc_layer(layer_table=layer_table))
             elif layer_type == 5:
-                model.layers.append(extract_output_layer(layer_table = layer_table))
+                model.layers.append(extract_output_layer(layer_table=layer_table))
             elif layer_type == 6:
-                model.layers.append(extract_recurrent_layer(layer_table = layer_table))
+                model.layers.append(extract_recurrent_layer(layer_table=layer_table))
             elif layer_type == 8:
-                model.layers.append(extract_batchnorm_layer(layer_table = layer_table))
+                model.layers.append(extract_batchnorm_layer(layer_table=layer_table))
             elif layer_type == 9:
-                model.layers.append(extract_residual_layer(layer_table = layer_table))
+                model.layers.append(extract_residual_layer(layer_table=layer_table))
             elif layer_type == 10:
-                model.layers.append(extract_concatenate_layer(layer_table = layer_table))
+                model.layers.append(extract_concatenate_layer(layer_table=layer_table))
             elif layer_type == 11:
-                model.layers.append(extract_detection_layer(layer_table = layer_table))
+                model.layers.append(extract_detection_layer(layer_table=layer_table))
             elif layer_type == 12:
                 model.layers.append(extract_scale_layer(layer_table=layer_table))
             elif layer_type == 13:
-                model.layers.append(extract_keypoints_layer(layer_table = layer_table))
+                model.layers.append(extract_keypoints_layer(layer_table=layer_table))
             elif layer_type == 14:
-                model.layers.append(extract_reshape_layer(layer_table = layer_table))
+                model.layers.append(extract_reshape_layer(layer_table=layer_table))
             elif layer_type == 16:
-                model.layers.append(extract_conv2dtranspose_layer(layer_table = layer_table))
+                model.layers.append(extract_conv2dtranspose_layer(layer_table=layer_table))
             elif layer_type == 17:
-                model.layers.append(extract_groupconv_layer(layer_table = layer_table))
+                model.layers.append(extract_groupconv_layer(layer_table=layer_table))
             elif layer_type == 18:
-                model.layers.append(extract_channelshuffle_layer(layer_table = layer_table))
+                model.layers.append(extract_channelshuffle_layer(layer_table=layer_table))
             elif layer_type == 23:
-                model.layers.append(extract_rpn_layer(layer_table = layer_table))
+                model.layers.append(extract_rpn_layer(layer_table=layer_table))
             elif layer_type == 24:
-                model.layers.append(extract_roipooling_layer(layer_table = layer_table))
+                model.layers.append(extract_roipooling_layer(layer_table=layer_table))
             elif layer_type == 25:
-                model.layers.append(extract_fastrcnn_layer(layer_table = layer_table))
+                model.layers.append(extract_fastrcnn_layer(layer_table=layer_table))
             elif layer_type == 28:
-                model.layers.append(extract_layernorm_layer(layer_table = layer_table))
+                model.layers.append(extract_layernorm_layer(layer_table=layer_table))
             elif layer_type == 29:
-                model.layers.append(extract_mhattention_layer(layer_table = layer_table))                
+                model.layers.append(extract_mhattention_layer(layer_table=layer_table))
 
         conn_mat = model_table[['_DLNumVal_', '_DLLayerID_']][
             model_table['_DLKey1_'].str.contains('srclayers')].sort_values('_DLLayerID_')
@@ -863,8 +863,6 @@ class Network(Layer):
                     self.layers.append(extract_layernorm_layer(layer_table = layer_table))
                 elif layer_type == 29:
                     self.layers.append(extract_mhattention_layer(layer_table = layer_table))
-                else:
-                    raise DLPyError('Doesn\'t support')
 
             conn_mat = model_table[['_DLNumVal_', '_DLLayerID_']][
                 model_table['_DLKey1_'].str.contains('srclayers')].sort_values('_DLLayerID_')

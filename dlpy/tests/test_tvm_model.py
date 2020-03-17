@@ -49,7 +49,7 @@ class TestTVMModel(unittest.TestCase):
         swat.options.cas.print_messages = False
         swat.options.interactive_mode = False
 
-        cls.s = swat.CAS()
+        cls.s = swat.CAS('dlgrd010', 23309)
         cls.server_type = tm.get_cas_host_type(cls.s)
         cls.server_sep = '\\'
         if cls.server_type.startswith("lin") or cls.server_type.startswith("osx"):
@@ -95,6 +95,17 @@ class TestTVMModel(unittest.TestCase):
         # build_graph(self.s, 'tvm_model', tvm_graph_path, output_laye)
         tvm_to_sas(self.s, 'tvm_mode', tvm_graph, tvm_params_dict, output_laye)
 
+    def test_model2(self):
+        from dlpy.layers import Segmentation
+        output_laye = Segmentation(name='Segmentation_1',
+                                   outputImageType='BASE64', outputImageProb=False)
+        path = "/cas/DeepLearn/models/RCafe"
+        tvm_graph_path = f'{path}/model_zdm2ii_graph.json'
+        tvm_graph = json.load(open(tvm_graph_path))
+        tvm_params_dict = np.load(f'{path}/model_zdm2ii_param2.npy', allow_pickle=True)
+        tvm_params_dict = tvm_params_dict[()]
+        # output_laye = None
+        model_fusion = tvm_to_sas(self.s, 'tvm_mode', tvm_graph, tvm_params_dict, ['inputlayer_1'], output_laye)
 
     @classmethod
     def tearDownClass(cls):

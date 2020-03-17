@@ -16,7 +16,7 @@
 #  limitations under the License.
 #
 
-''' Convert ONNX models to SAS models '''
+''' Convert TVM models to SAS models '''
 
 import os
 import json
@@ -28,7 +28,7 @@ import numpy as np
 from dlpy import Sequential
 from dlpy import layers
 
-TVM_OP = ['nn_leaky_relu', 'nn_relu', 'add', 'nn_relu', 'nn_conv2d', 'nn_max_pool2d']
+TVM_OP = ['nn_leaky_relu', 'nn_relu', 'add', 'nn_relu', 'nn_conv2d_transpose', 'nn_max_pool2d', 'nn_conv2d', 'concatenate']
 ACT_OP = ['nn_leaky_relu', 'nn_relu']
 
 # mapping ONNX ops to SAS activations
@@ -58,25 +58,59 @@ def meta_fusion(name, operators, t_size, output_size):
     op_configs = dict()
     # op_configs['name'] = name
     input_size = t_size[0]
+    operator_type = operators[0] if len(operators) != 0 else None
 
-    if operators[0] == 'nn_conv2d':
+    if operator_type in ['nn_conv2d', 'nn_conv2d_transpose']:
+        transpose = False if operator_type == 'nn_conv2d' else True
         op_configs['type'] = 'convo'
+            
         # the second op can be bias addition or activation
         kernel_size = t_size[1]
-        op_configs['n_filters'] = kernel_size[0]
+        op_configs['n_filters'] = kernel_size[1] if transpose else kernel_size[0]
         op_configs['height'] = kernel_size[-2]
         op_configs['width'] = kernel_size[-1]
         op_configs['stride'] = None
 
-        if input_size[-1] % output_size[-1] != 0:
-            raise TVMParseError('{}: Only support same padding.'.format(name))
-        else:
-            op_configs['stride_horizontal'] = int(input_size[-1] / output_size[-1])
+        if transpose:
+            if output_size[-1] % input_size[-1] != 0:
+                raise TVMParseError('{}: Only support same padding.'.format(name))
+            else:
+                op_configs['stride_horizontal'] = int(output_size[-1] / input_size[-1])
 
-        if input_size[-2] % output_size[-2] != 0:
-            raise TVMParseError('{}: Only support same padding.'.format(name))
+            if output_size[-2] % input_size[-2] != 0:
+                raise TVMParseError('{}: Only support same padding.'.format(name))
+            else:
+                op_configs['stride_vertical'] = int(output_size[-2] / input_size[-2])
+            
+            if op_configs['width'] % 2:
+                print('WARNING: Horizontal padding is set as (kernel width - 1) / 2.')
+                op_configs['padding_width'] = (op_configs['width'] - 1) / 2
+            else:
+                raise TVMParseError('{}: Kernel shape has to be odd.'.format(name))
+                
+            if op_configs['height'] % 2:
+                print('WARNING: Vertical padding is set as (kernel height - 1) / 2.')
+                op_configs['padding_height'] = (op_configs['height'] - 1) / 2
+            else:
+                raise TVMParseError('{}: Kernel shape has to be odd.'.format(name))
+            
+            stride = (op_configs['stride_vertical'], op_configs['stride_horizontal'])
+            kernel_size = (op_configs['height'], op_configs['width'])
+            padding = (op_configs['padding_height'], op_configs['padding_width'] )
+            input_map_size = input_size[2:]
+            output_map_size = output_size[2:]
+            min_sizes = [(input_map_size[i] - 1) * stride[i] - 2 * padding[i] + kernel_size[i] for i in range(2)]
+            op_configs['output_padding_height'], op_configs['output_padding_width'] = tuple([output_map_size[i] - min_sizes[i] for i in range(2)])
         else:
-            op_configs['stride_vertical'] = int(input_size[-2] / output_size[-2])
+            if input_size[-1] % output_size[-1] != 0:
+                raise TVMParseError('{}: Only support same padding.'.format(name))
+            else:
+                op_configs['stride_horizontal'] = int(input_size[-1] / output_size[-1])
+
+            if input_size[-2] % output_size[-2] != 0:
+                raise TVMParseError('{}: Only support same padding.'.format(name))
+            else:
+                op_configs['stride_vertical'] = int(input_size[-2] / output_size[-2])
 
         # check ops order after conv2d is fusible
         if len(operators) == 1:
@@ -94,7 +128,7 @@ def meta_fusion(name, operators, t_size, output_size):
             if op == 'add':
                 bias_shape = t_size[2]
                 if bias_shape[1] != op_configs['n_filters']:
-                    raise TVMParseError('{}: conv2d bias shape doesn\'t match number'
+                    raise TVMParseError('{}: Bias shape doesn\'t match number'
                                         ' of convolution kernel filter.'.format(name))
                 elif bias_shape[-2] == 1 and bias_shape[-1] == 1:
                     op_configs['include_bias'] = True
@@ -104,7 +138,7 @@ def meta_fusion(name, operators, t_size, output_size):
             # check activation
             if op in ACT_OP:
                 op_configs['act'] = _act_map[op]
-    elif operators[0] == 'nn_max_pool2d':
+    elif operator_type == 'nn_max_pool2d':
         op_configs['type'] = 'pool'
         op_configs['pool'] = 'max'
         op_configs['height'] = 2
@@ -114,17 +148,21 @@ def meta_fusion(name, operators, t_size, output_size):
         #     raise TVMParseError('{}: Only support same padding.'.format(name))
         # else:
         op_configs['stride'] = None
-        op_configs['stride_horizontal'] = int(input_size[-1] / output_size[-1])
+        op_configs['stride_horizontal'] = int(round(input_size[-1] / output_size[-1]))
 
         # if input_size[-2] % output_size[-2] != 0:
         #     raise TVMParseError('{}: Only support same padding.'.format(name))
         # else:
-        op_configs['stride_vertical'] = int(input_size[-2] / output_size[-2])
+        op_configs['stride_vertical'] = int(round(input_size[-2] / output_size[-2]))
+    elif operator_type == 'concatenate':
+        op_configs['type'] = 'concat'
+    else:
+        TVMParseError('{} contains unsupported layer type.'.format(name))
 
     return op_configs
 
 
-def build_graph(conn, model_table, tvm_graph, output_layer=None):
+def build_graph(conn, model_table, tvm_graph, input_layers, output_layer=None):
     # model = Sequential(conn=conn, model_table=model_table)
     dlpy_layers = []
 
@@ -138,9 +176,13 @@ def build_graph(conn, model_table, tvm_graph, output_layer=None):
     def search_ops(f_name):
         ''' search operators in the node '''
         if f_name in TVM_OP and f_name not in ops:
+            for op in ops:
+                if op.startswith(f_name):
+                    return
             ops.append(f_name)
             return
         for o in TVM_OP:
+            # avoid duplicate eg. nn_conv2d_transpose and nn_conv2d
             l = re.split(r"({}|\(|\))".format(o), f_name)
             l = [x for x in l if x != '']
             if len(l) == 1 and l[0] == f_name:
@@ -149,7 +191,7 @@ def build_graph(conn, model_table, tvm_graph, output_layer=None):
                 search_ops(i)
 
     for idx, node in enumerate(nodes):
-        if node['op'] == 'null':
+        if node['op'] == 'null' and node['name'] not in input_layers:
             continue
         else:
             name = node['name']
@@ -161,8 +203,12 @@ def build_graph(conn, model_table, tvm_graph, output_layer=None):
             # check if the node can be converted to an input layer
             if len(src_nodes) == 1 and nodes[src_nodes[0]]['op'] == 'null':
                 t_size = t_size[0]
-                layer = layers.InputLayer(name = name, height = t_size[-2], width = t_size[-1],
-                                          n_channels = t_size[-3], norm_stds = None, offsets = None)
+                layer = layers.InputLayer(name=name, height=t_size[-2], width=t_size[-1],
+                                          n_channels=t_size[-3], norm_stds=None, offsets=None)
+            elif len(src_nodes) == 0:
+                arg_nodes.remove(idx)
+                layer = layers.InputLayer(name=name, height=out_size[-2], width=out_size[-1], n_channels=out_size[-3],
+                                          norm_stds=None, offsets=None)
             else:
                 op_name = name[6:] if name.startswith('fused_') else name
                 ops = []
@@ -177,7 +223,10 @@ def build_graph(conn, model_table, tvm_graph, output_layer=None):
                         del op_dict['type']
                         # if it is _Conv, assume it is Conv2d
                         if l == layers._Conv:
-                            layer = layers.Conv2d(name = name, src_layers = src_layers, **op_dict)
+                            if 'output_padding_height' in op_dict:
+                                layer = layers.Conv2DTranspose(name=name, src_layers=src_layers, **op_dict)
+                            else:
+                                layer = layers.Conv2d(name=name, src_layers=src_layers, **op_dict)
                         else:
                             layer = l(name=name, src_layers=src_layers, **op_dict)
                         break
@@ -212,7 +261,7 @@ def write_weights_hdf5(dlpy_layers, graph, tensor_dict, name):
     '''
     temp_HDF5 = os.path.join(os.getcwd(), '{}_weights.tvm.h5'.format(name))
     f_out = h5py.File(temp_HDF5, 'w')
-    weight_layers = [l for l in dlpy_layers if l.type in ['convo', 'fc', 'batchnorm', 'groupconvo']]
+    weight_layers = [l for l in dlpy_layers if l.type in ['convo', 'fc', 'batchnorm', 'groupconvo', 'transconvo']]
     f_out.attrs['layer_names'] = [l.name.encode('utf8') for l in weight_layers]
 
     nodes = graph['nodes']
@@ -223,7 +272,10 @@ def write_weights_hdf5(dlpy_layers, graph, tensor_dict, name):
 
     for layer in weight_layers:
         new_weight_names = []
-        g_out = f_out.create_group(layer.name)
+        try:
+            g_out = f_out.create_group(layer.name)
+        except:
+            raise
         # find weights params name list
         # find layer's node in tvm_graph
         node = [n for n in nodes if n['name'] == layer.name][0]
@@ -237,7 +289,7 @@ def write_weights_hdf5(dlpy_layers, graph, tensor_dict, name):
                 weights.append(tensor_dict[p])
         # weights = [v for k, v in tensor_dict.items() if k in params_name]
 
-        if layer.type in ['convo', 'fc', 'groupconvo']:
+        if layer.type in ['convo', 'fc', 'groupconvo', 'transconvo']:
             # check bias op following the node
             # to see if we need to include any bias weights
             if layer.config['include_bias']:
@@ -260,6 +312,9 @@ def write_weights_hdf5(dlpy_layers, graph, tensor_dict, name):
                                         w = np.transpose(w, (1, 0))
                         if w.shape[1] == layer.config['n']:
                             w = np.transpose(w, (1, 0))
+                    # swap weights for transpose convolution.
+                    if layer.type == 'transconvo':
+                        w = np.swapaxes(w, 0, 1)
                     g_out.create_dataset(dset_name.encode('utf8'), data = w)
                     new_weight_names.append(dset_name.encode('utf8'))
                 else:
@@ -298,7 +353,7 @@ def save_params_dict(params_dict, save_to):
     np.save(save_to, params_dict)
 
 
-def tvm_to_sas(conn, model_table, tvm_graph, tvm_params_dict, output_layer=None):
+def tvm_to_sas(conn, model_table, tvm_graph, tvm_params_dict, input_layers, output_layer=None):
     '''
     Generate SAS model from TVM model
 
@@ -325,7 +380,7 @@ def tvm_to_sas(conn, model_table, tvm_graph, tvm_params_dict, output_layer=None)
     from dlpy import Model
     from dlpy.utils import DLPyError
 
-    dlpy_layers = build_graph(conn, model_table, tvm_graph, output_layer)
+    dlpy_layers = build_graph(conn, model_table, tvm_graph, input_layers,output_layer)
 
     write_weights_hdf5(dlpy_layers, tvm_graph, tvm_params_dict, model_table)
 
