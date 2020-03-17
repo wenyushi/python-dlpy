@@ -27,14 +27,14 @@ from onnx import numpy_helper
 from onnx.shape_inference import infer_shapes
 
 from dlpy.layers import (InputLayer, Conv2d, Pooling, Dense, OutputLayer,
-                         BN, Concat, Res, GroupConv2d, GlobalAveragePooling2D)
+                         BN, Concat, Res, GroupConv2d, GlobalAveragePooling2D, Conv2DTranspose)
 from dlpy.model_conversion.onnx_graph import OnnxGraph, OnnxNode
 from dlpy.model_conversion.onnx_transforms import (ConstToInitializer,
                                                    InitReshape, InitUnsqueeze,
                                                    FuseMulAddBN)
 
 # The supported ONNX ops that can be parsed by this module
-_onnx_ops = ['Conv', 'MaxPool', 'AveragePool', 'GlobalAveragePool',
+_onnx_ops = ['Conv', 'ConvTranspose', 'MaxPool', 'AveragePool', 'GlobalAveragePool',
              'BatchNormalization', 'Concat', 'Gemm', 'MatMul',
              'Add', 'Sum', 'Reshape', 'Dropout', 'Flatten', 'Constant']
 
@@ -299,7 +299,7 @@ def onnx_extract_sas_layer(graph, node, layers):
         Layer object corresponding to the ONNX node.
 
     '''
-    if node.op_type == 'Conv':
+    if node.op_type in ['Conv', 'ConvTranspose']:
         return onnx_extract_conv(graph, node, layers)
     elif node.op_type == 'MaxPool':
         return onnx_extract_pool(graph, node, layers, pool='MAX')
@@ -384,7 +384,7 @@ def onnx_extract_conv(graph, node, layers):
 
     Returns
     -------
-    :class:`Conv2d` or 'GroupConv2d'
+    :class:`Conv2d` , 'GroupConv2d' or 'Conv2DTranspose'
 
     '''
     previous = onnx_find_previous_compute_layer(graph, node)
@@ -408,6 +408,9 @@ def onnx_extract_conv(graph, node, layers):
     include_bias = False
     act = 'identity'
     group = None
+    # attribute of transpose convolution
+    output_padding_height = None
+    output_padding_width = None
 
     # if padding is not present, default to 0
     is_padding = False
@@ -442,6 +445,9 @@ def onnx_extract_conv(graph, node, layers):
                 padding_width = max(padding_width, p_w2)
         elif attr.name == 'group':
             group = attr.i
+        # attribute of transpose convolution
+        elif attr.name == 'output_padding':
+            output_padding_height, output_padding_width = attr.ints
 
     if not is_padding:
         padding = 0
@@ -483,6 +489,23 @@ def onnx_extract_conv(graph, node, layers):
                            include_bias=include_bias,
                            src_layers=src)
     else:
+        # Conv2DTranspose has an unique attribute, output_padding
+        if output_padding_width and output_padding_height:
+            return Conv2DTranspose(n_filters=n_filters,
+                                   width=width,
+                                   height=height,
+                                   stride=stride,
+                                   name=node.name,
+                                   stride_horizontal=stride_horizontal,
+                                   stride_vertical=stride_vertical,
+                                   padding=padding,
+                                   padding_width=padding_width,
+                                   padding_height=padding_height,
+                                   output_padding_height=output_padding_height,
+                                   output_padding_width=output_padding_width,
+                                   act=act,
+                                   include_bias=include_bias,
+                                   src_layers=src)
         return Conv2d(n_filters=n_filters,
                       width=width,
                       height=height,
@@ -993,7 +1016,7 @@ def is_compute_layer(graph, node):
     # 'Add' and 'Sum' are handled separately since they may be
     # either a bias op for previous layer, or a SAS residual layer
     # TODO: add reshape 
-    sas_layers = ['Conv', 'MaxPool', 'AveragePool', 'GlobalAveragePool',
+    sas_layers = ['Conv', 'ConvTranspose', 'MaxPool', 'AveragePool', 'GlobalAveragePool',
                   'BatchNormalization', 'Concat', 'Gemm', 'MatMul']
 
     if node.op_type in ['Add', 'Sum']:

@@ -23,6 +23,8 @@ from onnx import helper, numpy_helper
 from onnx import TensorProto
 import numpy as np
 
+from dlpy.utils import DLPyError
+
 
 class OnnxWriteError(ValueError):
     '''
@@ -76,7 +78,7 @@ def sas_to_onnx(layers, model_table, model_weights):
                                                        shape=[1, C, H, W])
             inputs.append(value_info)
 
-        elif layer.type == 'convo' or layer.type == 'groupconvo':
+        elif layer.type in ['convo', 'groupconvo', 'transconvo']:
             H = int(layer.config['height'])
             W = int(layer.config['width'])
             M = int(layer.config['n_filters'])
@@ -121,13 +123,29 @@ def sas_to_onnx(layers, model_table, model_weights):
                 dropout_input = act_output
                 dropout_output = [layer.name]
 
-            conv_op = helper.make_node(op_type='Conv',
-                                       inputs=conv_input,
-                                       outputs=conv_output,
-                                       pads=padding,
-                                       kernel_shape=[H, W],
-                                       strides=[S_h, S_w],
-                                       group=group)
+            # for transpose convolution
+            if layer.type == 'transconvo':
+                # set output padding for transpose convolution
+                output_padding = get_output_paddings(layer)
+                # here we explicitly set pads and output padding.
+                conv_op = helper.make_node(op_type='ConvTranspose',
+                                           auto_pad='NOTSET',
+                                           inputs=conv_input,
+                                           outputs=conv_output,
+                                           output_padding=output_padding,
+                                           pads=padding,
+                                           kernel_shape=[H, W],
+                                           strides=[S_h, S_w],
+                                           group=group)
+            # for convolution and group convolution
+            else:
+                conv_op = helper.make_node(op_type='Conv',
+                                           inputs=conv_input,
+                                           outputs=conv_output,
+                                           pads=padding,
+                                           kernel_shape=[H, W],
+                                           strides=[S_h, S_w],
+                                           group=group)
             nodes.append(conv_op)
 
             # activation op
@@ -155,6 +173,14 @@ def sas_to_onnx(layers, model_table, model_weights):
             else:
                 conv_weights = np.array(weights, dtype=np.float32)
             conv_weights = np.reshape(conv_weights, (M, -1, H, W))
+            # we need to transpose weights tensor for transpose convolution. 
+            # https://github.com/onnx/onnx/blob/master/docs/Operators.md#convtranspose
+            # The weight tensor that will be used in the convolutions; has size (C x M/group x kH x kW), where C is the number of channels,
+            # and kH and kW are the height and width of the kernel, and M is the number of feature maps. For more than 2 dimensions,
+            # the weight shape will be (C x M/group x k1 x k2 x ... x kn), where (k1 x k2 x ... x kn) is the dimension of the kernel. 
+            # The number of channels in the output should be equal to W.shape[1] * group (assuming zero based indices of the shape array)
+            if layer.type == 'transconvo':
+                conv_weights = np.transpose(conv_weights, (1, 0, -2, -1))
             conv_init = numpy_helper.from_array(conv_weights,
                                                 name=layer.name+'_w')
             initializer.append(conv_init)
@@ -557,7 +583,11 @@ def sas_to_onnx(layers, model_table, model_weights):
                 act_op = make_onnx_activation(act, act_input, act_output)
                 nodes.append(act_op)
 
-        elif layer.type == 'detection':
+        # if layer type is detection or segmentation, just return a tensor.
+        # Although segmentation layer can be used to perform classification and regression,
+        # task very often depends on data type and then it is impossible to decide whether to
+        # add a softmax operation against channel axis. Here we just treat it as a output tensor.
+        elif layer.type in ['detection', 'segmentation']:
             # get output dimensions
             out_w, out_h, out_c = layer.src_layers[0].output_size
             # add value info to graph output
@@ -796,3 +826,21 @@ def get_strides(layer):
               'Setting stride to 1')
         return [1, 1]
 
+
+def get_output_paddings(layer):
+    ''' Gets the output paddings along each axis. Output_padding is an attribute of ConvTranspose '''
+    if layer.config.get('output_padding') is not None:
+        return [int(layer.config['output_padding'])]*2
+    elif (layer.config.get('output_padding_height') is not None and
+          layer.config.get('output_padding_width') is None):
+        return [int(layer.config['output_padding_height'])]*2
+    elif (layer.config.get('output_padding_width') is not None and
+          layer.config.get('output_padding_height') is None):
+        return [int(layer.config['output_padding_width'])]*2
+    elif (layer.config.get('output_padding_width') is not None and
+          layer.config.get('output_padding_height') is not None):
+        S_h = int(layer.config['output_padding_height'])
+        S_w = int(layer.config['output_padding_width'])
+        return [S_h, S_w]
+    else:
+        raise DLPyError('Please specify necessary parameters related to output padding of transpose convolution.')
