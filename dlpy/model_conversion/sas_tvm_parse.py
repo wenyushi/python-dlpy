@@ -25,7 +25,6 @@ import re
 import h5py
 import numpy as np
 
-from dlpy import Sequential
 from dlpy import layers
 
 TVM_OP = ['nn_leaky_relu', 'nn_relu', 'add', 'nn_relu', 'nn_conv2d_transpose', 'nn_max_pool2d', 'nn_conv2d', 'concatenate']
@@ -272,10 +271,7 @@ def write_weights_hdf5(dlpy_layers, graph, tensor_dict, name):
 
     for layer in weight_layers:
         new_weight_names = []
-        try:
-            g_out = f_out.create_group(layer.name)
-        except:
-            raise
+        g_out = f_out.create_group(layer.name)
         # find weights params name list
         # find layer's node in tvm_graph
         node = [n for n in nodes if n['name'] == layer.name][0]
@@ -312,14 +308,11 @@ def write_weights_hdf5(dlpy_layers, graph, tensor_dict, name):
                                         w = np.transpose(w, (1, 0))
                         if w.shape[1] == layer.config['n']:
                             w = np.transpose(w, (1, 0))
-                    # swap weights for transpose convolution.
-                    if layer.type == 'transconvo':
-                        w = np.swapaxes(w, 0, 1)
-                    g_out.create_dataset(dset_name.encode('utf8'), data = w)
+                    g_out.create_dataset(dset_name.encode('utf8'), data=w)
                     new_weight_names.append(dset_name.encode('utf8'))
                 else:
                     dset_name = layer.name + '/' + 'bias:0'
-                    g_out.create_dataset(dset_name.encode('utf8'), data = w)
+                    g_out.create_dataset(dset_name.encode('utf8'), data=w)
                     new_weight_names.append(dset_name.encode('utf8'))
         # elif layer.type == 'batchnorm':
         #     template_names = ['gamma:0', 'beta:0', 'moving_mean:0',
